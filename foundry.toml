@@ -1,0 +1,20 @@
+[profile.default]
+src = "src"
+test = "test"
+script = "script"
+out = "out"
+libs = ["lib"]
+remappings = ["forge-std/=lib/forge-std/src/"]
+solc = "0.8.30"
+# Calibur runs on EIP-7702 delegation, which arrived with Prague.
+evm_version = "prague"
+optimizer = true
+optimizer_runs = 10_000
+via_ir = true
+fs_permissions = [{ access = "read-write", path = "./deployments" }]
+
+[rpc_endpoints]
+sepolia = "${SEPOLIA_RPC_URL}"
+
+[fuzz]
+runs = 500

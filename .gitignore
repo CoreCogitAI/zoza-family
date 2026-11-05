@@ -1,0 +1,12 @@
+out/
+cache/
+broadcast/
+node_modules/
+.env
+.env.*
+!.env.example
+web/dist/
+server/data/
+.server.pid
+.server.log
+.e2e.log
