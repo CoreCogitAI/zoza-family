@@ -1,0 +1,12 @@
+{
+  "name": "zoza-family-server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --env-file-if-exists=../.env index.mjs",
+    "e2e": "node --env-file-if-exists=../.env e2e.mjs"
+  },
+  "dependencies": {
+    "viem": "2.57.14"
+  }
+}
