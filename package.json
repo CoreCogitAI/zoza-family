@@ -1,0 +1,11 @@
+{
+  "name": "zoza-family",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "abi": "node script/abi.mjs"
+  },
+  "dependencies": {
+    "viem": "2.57.14"
+  }
+}
