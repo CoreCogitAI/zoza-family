@@ -40,8 +40,9 @@ export const stats = {
   error: null,
   startedAt: null,
   readyAt: null,
-  anon: 0, // requests sent through Anon-RPC
-  direct: 0, // requests sent directly (the one bootstrap read, or direct mode)
+  anon: 0, // data reads through Anon-RPC
+  direct: 0, // data reads sent directly (direct mode only)
+  bootstrap: 0, // specifier reads Anon-RPC needs before it starts; no family data
   failed: 0,
   totalMs: 0,
   lastMs: null,
@@ -49,9 +50,9 @@ export const stats = {
 // Running totals across page loads, so the share reflects the whole visit.
 export const totals = (() => {
   try {
-    return { anon: 0, direct: 0, ...JSON.parse(sessionStorage.getItem('zf.anonTotals') ?? '{}') }
+    return { anon: 0, direct: 0, bootstrap: 0, ...JSON.parse(sessionStorage.getItem('zf.anonTotals') ?? '{}') }
   } catch {
-    return { anon: 0, direct: 0 }
+    return { anon: 0, direct: 0, bootstrap: 0 }
   }
 })()
 const listeners = new Set()
@@ -63,9 +64,9 @@ const emit = () => {
   listeners.forEach((fn) => fn({ ...stats, totals: { ...totals } }))
 }
 
-async function directRpc(url, method, params) {
-  stats.direct++
-  totals.direct++
+async function directRpc(url, method, params, kind = 'direct') {
+  stats[kind]++
+  totals[kind]++
   emit()
   const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) })
   const json = await res.json()
@@ -103,7 +104,7 @@ export function start(network = chosenNetwork()) {
   const w = new AnonRpcWorker({
     address: n.address,
     config: n.config,
-    preExisting: { rpcProvider: { request: ({ method, params }) => directRpc(bootstrap, method, params) } },
+    preExisting: { rpcProvider: { request: ({ method, params }) => directRpc(bootstrap, method, params, 'bootstrap') } },
   })
   worker = w
   w.ready.then(
