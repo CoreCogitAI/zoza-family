@@ -144,6 +144,11 @@ function serveStatic(res, pathname) {
 createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host ?? 'localhost'}`)
   if (!url.pathname.startsWith('/api/')) return serveStatic(res, url.pathname)
+  // LOG_API=1 prints one line per API call: no IPs, no query, addresses cut short.
+  if (process.env.LOG_API === '1') {
+    const t = Date.now()
+    res.on('finish', () => console.log(`${new Date().toISOString().slice(11, 19)} ${req.method} ${url.pathname.replace(/0x([0-9a-fA-F]{4})[0-9a-fA-F]{36}/, '0x$1…')} ${res.statusCode} ${Date.now() - t}ms${req.headers['x-zoza-auth'] ? ' pass' : ''}`))
+  }
   try {
     await api(req, res, url)
   } catch (e) {
