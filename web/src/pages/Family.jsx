@@ -5,7 +5,7 @@ import { inviteMessage, ROLES } from '../../../shared/invites.mjs'
 import { serverFetch } from '../anon.js'
 import { authHeader, tokenFor } from '../auth.js'
 import { byAddress, family, loadMembers, loadSelf, nameOf, saveSelf } from '../family.js'
-import { useApp } from '../main.jsx'
+import { go, useApp } from '../main.jsx'
 import { Addr, Callout, Empty, Face, Icon, rel, Skel, Tip, useNow } from '../ui.jsx'
 
 export function PlanCard({ plan, now, viewer, balance }) {
@@ -232,8 +232,9 @@ function InviteCard({ me }) {
           </button>
         )}
       </div>
+      {sent.some((i) => !i.acceptedBy) && <p className="tiny muted" style={{ marginTop: 14 }}>Send each link to the person yourself, by WhatsApp or any chat. They join by opening it.</p>}
       {sent.length > 0 && (
-        <div className="stack-sm" style={{ marginTop: 14 }}>
+        <div className="stack-sm" style={{ marginTop: 10 }}>
           {sent.slice(0, 6).map((i) => (
             <div key={i.code} className="between small" style={{ gap: 8 }}>
               <span>
@@ -250,6 +251,25 @@ function InviteCard({ me }) {
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+/// Invites are links, not messages to an address, so the invited person
+/// opens the link, or pastes it here.
+function JoinCard() {
+  const [text, setText] = useState('')
+  const code = text.match(/(?:join\/)?([A-Za-z0-9_-]{12})\s*$/)?.[1]
+  return (
+    <div className="card">
+      <h3 style={{ marginBottom: 6 }}>Join a family</h3>
+      <p className="tiny muted" style={{ marginBottom: 10 }}>Someone invited you? Paste the link they sent you.</p>
+      <div className="stack-sm">
+        <input placeholder="https://eth.zoza.world/#/join/…" value={text} onChange={(e) => setText(e.target.value)} aria-label="Invite link" />
+        <button className="btn small" onClick={() => go(`/join/${code}`)} disabled={!code}>
+          <Icon name="users" /> Open the invite
+        </button>
+      </div>
     </div>
   )
 }
@@ -427,7 +447,7 @@ export default function Family() {
 
           {data && mine.length === 0 && forMe.length === 0 && guard.length === 0 && data.namedIn.length === 0 && me.id !== 'priya' && (
             <Empty icon="users" title={`Nothing for ${me.name} yet`}>
-              {me.persona ? `Switch to Priya and start a plan or write a will that names ${me.name}. ${me.id === 'dada' ? 'Then Dada can send a gift from the plan page.' : ''}` : 'When someone names you in a plan or a will, it shows here. To name others, invite them first.'}
+              {me.persona ? `Switch to Priya and start a plan or write a will that names ${me.name}. ${me.id === 'dada' ? 'Then Dada can send a gift from the plan page.' : ''}` : 'When someone names you in a plan or a will, it shows here. Invited by family? Invites are links, not messages: paste the link they sent under “Join a family”.'}
             </Empty>
           )}
         </div>
@@ -435,6 +455,7 @@ export default function Family() {
         <aside className="stack">
           <WillCard me={me} w={data?.will} now={now} onCheckIn={checkIn} />
           <InviteCard me={me} />
+          {!me.persona && !loadSelf()?.inviter && <JoinCard />}
           <div className="card">
             <h3 style={{ marginBottom: 10 }}>Your family</h3>
             <div className="stack-sm">
