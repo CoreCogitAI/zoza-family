@@ -60,15 +60,20 @@ export default function PlanNew() {
     const maturity = BigInt(now + (months - 1) * month + Math.min(month, 3600) / 2)
     // The mandate: an allowance for exactly those instalments, on top of other plans'.
     const have = await allowanceOf(me.address)
+    const [before] = await savings('plansOf', [me.address])
     const calls = [
       call.usdc('approve', [config.savings, have + instalment * BigInt(months)]),
       call.savings('createPlan', [name, child.address, nominee.address, instalment, month, maturity, earn]),
     ]
     const r = await send({ title: `Start ${name}`, signer: me.signer, calls })
-    if (r) {
+    if (!r) return
+    // A lagging RPC node may not list the new plan yet.
+    for (let i = 0; i < 20; i++) {
       const [asParent] = await savings('plansOf', [me.address])
-      setTimeout(() => go(`/plan/${asParent[asParent.length - 1]}`), 1200)
+      if (asParent.length > before.length) return setTimeout(() => go(`/plan/${asParent[asParent.length - 1]}`), 1200)
+      await new Promise((ok) => setTimeout(ok, 1500))
     }
+    go('/family')
   }
 
   const steps = ['For whom', 'How much', 'Interest', 'Nominee', 'Review']
