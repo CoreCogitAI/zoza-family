@@ -61,6 +61,7 @@ export async function sendBatch({ signer, account, calls, onStep = () => {} }) {
   if (signer.injected && getAddress(signer.address) === account) {
     // A connected wallet cannot be upgraded by us, so it sends its own
     // transactions and pays their gas. Each waits for the one before.
+    await signer.check?.()
     let hash
     for (const c of calls) {
       onStep('sign')

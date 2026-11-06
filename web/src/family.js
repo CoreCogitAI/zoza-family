@@ -161,14 +161,25 @@ export function signOut() {
 export function injectedSigner(address, walletId) {
   const provider = () => providerFor(walletId)
   const client = () => createWalletClient({ account: getAddress(address), chain: sepolia, transport: custom(provider()) })
+  const short = (a) => `${a.slice(0, 6)}…${a.slice(-4)}`
+  // One wallet, several accounts: sign only as the account this page shows.
+  const check = async () => {
+    const p = provider()
+    if (!p) throw new Error('No browser wallet found. Open MetaMask, then reload this page.')
+    const [now] = await p.request({ method: 'eth_accounts' })
+    if (!now) throw new Error(`MetaMask is locked or not connected to this site. Open MetaMask, unlock it and connect ${short(getAddress(address))}.`)
+    if (getAddress(now) !== getAddress(address))
+      throw new Error(`MetaMask is on another account (${short(getAddress(now))}). In MetaMask, switch to ${short(getAddress(address))}${loadSelf()?.name && loadSelf().name !== 'You' ? ` (${loadSelf().name})` : ''}, then try again.`)
+  }
   return {
     address: getAddress(address),
     injected: true,
+    check,
     get wallet() {
       return client()
     },
-    signTypedData: (args) => client().signTypedData(args),
-    signMessage: ({ message }) => client().signMessage({ message }),
+    signTypedData: async (args) => (await check(), client().signTypedData(args)),
+    signMessage: async ({ message }) => (await check(), client().signMessage({ message })),
   }
 }
 

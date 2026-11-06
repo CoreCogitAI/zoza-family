@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { parseUnits } from 'viem'
 import { allowanceOf, call, config, inr, INR_PER_USD, savings, usd } from '../chain.js'
 import { hasPass, tokenFor } from '../auth.js'
@@ -19,6 +19,27 @@ export function PassBanner() {
   const { me, rerender } = useApp()
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
+  // MetaMask's own account, which may not be the one this page shows.
+  const [other, setOther] = useState(null)
+  useEffect(() => {
+    if (!me?.injected) return
+    const look = () =>
+      me.signer
+        .check()
+        .then(() => setOther(null))
+        .catch((e) => setOther(e.message))
+    look()
+    const t = setInterval(look, 5000)
+    return () => clearInterval(t)
+  }, [me?.address, me?.injected])
+  if (other)
+    return (
+      <div style={{ marginBottom: 20 }}>
+        <Callout tone="warn">
+          <b>{other}</b> This page shows {me.name}'s family; MetaMask can only sign as the account it is on.
+        </Callout>
+      </div>
+    )
   if (!me?.injected || hasPass(me)) return null
   const sign = async () => {
     setBusy(true)

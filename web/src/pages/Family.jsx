@@ -361,7 +361,7 @@ export default function Family() {
   const getMoney = async () => {
     setFaucet({ busy: true })
     try {
-      const r = await api('/faucet', { address: me.address, eth: me.id === 'dada' || !!me.injected }, me.address)
+      const r = await api('/faucet', { address: me.address, eth: me.injected ? 'gas' : me.id === 'dada' }, me.address)
       setFaucet({ ok: `Sent ${r.usdc} test USDC${r.eth !== '0' ? ` and ${r.eth} test ETH` : ''}.` })
       setTimeout(refresh, 2000)
     } catch (e) {
