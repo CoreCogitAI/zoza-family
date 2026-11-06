@@ -48,11 +48,19 @@ const config = () => ({
   relayer: relayer?.account.address ?? null,
   automation: { mode: status.mode, keeper: keeper?.account.address ?? null },
   faucet: !!treasury,
+  diag: process.env.LOG_API === '1',
 })
 
 async function api(req, res, url) {
   const path = url.pathname
   if (req.method === 'GET' && path === '/api/config') return send(res, 200, config())
+  // LOG_API=1 only: a browser reports its state and errors, so a problem seen in
+  // one browser shows in the log. Short text, addresses already cut by the page.
+  if (req.method === 'POST' && path === '/api/diag' && process.env.LOG_API === '1') {
+    const { line } = await readJson(req)
+    console.log(`${new Date().toISOString().slice(11, 19)} DIAG ${String(line ?? '').replace(/0x([0-9a-fA-F]{4})[0-9a-fA-F]{36}/g, '0x$1…').replace(/[\r\n]+/g, ' ').slice(0, 300)}`)
+    return send(res, 200, {})
+  }
   if (req.method === 'GET' && path === '/api/watcher') return send(res, 200, status)
   // Owners with a will, for the Chainlink CRE workflow to check.
   if (req.method === 'GET' && path === '/api/owners') return send(res, 200, db.owners)
