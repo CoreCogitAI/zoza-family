@@ -40,12 +40,33 @@ const WILL = parseAbi([
   "function willOf(address owner) view returns ((uint64 version, uint64 lastSeen, uint64 claimOpenedAt, uint32 silence, uint32 window, address[] heirs, uint16[] shares, address[] tokens, bool pull))",
 ])
 const SILENT = 2
+// Multicall3, at the same address on every chain. One read instead of one per
+// plan and per will keeps the run inside free RPC rate limits.
+const MULTICALL3: Address = "0xcA11bde05977b3631167028862bE2a173976CA11"
+const MULTICALL = parseAbi([
+  "struct Call3 { address target; bool allowFailure; bytes callData; }",
+  "struct Result { bool success; bytes returnData; }",
+  "function aggregate3(Call3[] calls) payable returns (Result[] returnData)",
+])
+type Read = { to: Address; abi: any; functionName: string; args?: unknown[] }
 
 function reader(runtime: Runtime<Config>, evm: EVMClient) {
   return <T>(to: Address, abi: any, functionName: string, args: unknown[] = []): T => {
     const data = encodeFunctionData({ abi, functionName, args } as any)
     const res = evm.callContract(runtime, { call: encodeCallMsg({ from: zeroAddress, to, data }), blockNumber: LATEST_BLOCK_NUMBER }).result()
     return decodeFunctionResult({ abi, functionName, data: bytesToHex(res.data) } as any) as T
+  }
+}
+
+/// Many reads in one eth_call. A read that fails comes back as undefined.
+function batchReader(read: ReturnType<typeof reader>) {
+  return (reads: Read[]): any[] => {
+    if (!reads.length) return []
+    const calls = reads.map((r) => ({ target: r.to, allowFailure: true, callData: encodeFunctionData({ abi: r.abi, functionName: r.functionName, args: r.args ?? [] } as any) }))
+    const results = read<readonly { success: boolean; returnData: Hex }[]>(MULTICALL3, MULTICALL, "aggregate3", [calls])
+    return results.map((res, i) =>
+      res.success ? decodeFunctionResult({ abi: reads[i].abi, functionName: reads[i].functionName, data: res.returnData } as any) : undefined,
+    )
   }
 }
 
@@ -76,25 +97,32 @@ const onTick = (runtime: Runtime<Config>): string => {
   if (!network) throw new Error(`unknown chain ${c.chainName}`)
   const evm = new EVMClient(network.chainSelector.selector)
   const read = reader(runtime, evm)
+  const readMany = batchReader(read)
   const now = BigInt(Math.floor(runtime.now().getTime() / 1000))
 
   // Plans: due instalments and matured plans.
   const collect: bigint[] = []
   const release: bigint[] = []
-  const count = read<bigint>(c.savings, SAVINGS, "planCount")
-  for (let id = 0n; id < count; id++) {
-    const p = read<any>(c.savings, SAVINGS, "planOf", [id])
-    if (p.closed) continue
+  const count = Number(read<bigint>(c.savings, SAVINGS, "planCount"))
+  const ids = Array.from({ length: count }, (_, i) => BigInt(i))
+  const planReads = readMany(ids.flatMap((id) => [
+    { to: c.savings, abi: SAVINGS, functionName: "planOf", args: [id] },
+    { to: c.savings, abi: SAVINGS, functionName: "canCollect", args: [id] },
+  ]))
+  ids.forEach((id, i) => {
+    const p = planReads[2 * i]
+    if (!p || p.closed) return
     if (now >= p.maturity) release.push(id)
-    else if (read<boolean>(c.savings, SAVINGS, "canCollect", [id])) collect.push(id)
-  }
+    else if (planReads[2 * i + 1]) collect.push(id)
+  })
 
   // Wills: owners silent long enough for a claim to open.
   const owners = JSON.parse(runtime.runInNodeMode(fetchOwners, consensusIdenticalAggregation<string>())().result()) as Address[]
   const open: Address[] = []
-  for (const o of owners) {
-    if (Number(read<number>(c.will, WILL, "stateOf", [o])) === SILENT) open.push(o)
-  }
+  const states = readMany(owners.map((o) => ({ to: c.will, abi: WILL, functionName: "stateOf", args: [o] })))
+  owners.forEach((o, i) => {
+    if (states[i] !== undefined && Number(states[i]) === SILENT) open.push(o)
+  })
 
   runtime.log(`due: collect ${collect.length}, open claims ${open.length}, release ${release.length}`)
   if (!collect.length && !open.length && !release.length) return "nothing due"
