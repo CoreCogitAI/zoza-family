@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { parseUnits } from 'viem'
 import { allowanceOf, call, config, inr, INR_PER_USD, savings, usd } from '../chain.js'
+import { hasPass, tokenFor } from '../auth.js'
 import { usePerson } from '../data.js'
-import { demoTime, family, setDemoTime } from '../family.js'
+import { demoTime, family, loadMembers, setDemoTime } from '../family.js'
 import { go, useApp } from '../main.jsx'
 import { Callout, Face, Icon, Tip } from '../ui.jsx'
 
@@ -13,8 +14,52 @@ const GOALS = [
   { id: 'future', icon: 'heart', label: 'Their future', name: (c) => `${c}'s future` },
 ]
 
+/// A connected wallet sees its family only after signing a read pass once.
+export function PassBanner() {
+  const { me, rerender } = useApp()
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+  if (!me?.injected || hasPass(me)) return null
+  const sign = async () => {
+    setBusy(true)
+    setErr(null)
+    try {
+      await tokenFor(me, true)
+      await loadMembers()
+      rerender()
+    } catch (e) {
+      setErr(e.shortMessage ?? e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <Callout tone="warn">
+        <b>Your family list is locked in this browser.</b> People who joined, your inbox and who you can name in a plan or a will load only after you sign once. It costs nothing and lasts a week.
+        <div style={{ marginTop: 10 }}>
+          <button className="btn primary small" onClick={sign} disabled={busy}>
+            {busy ? <span className="spinner" /> : <Icon name="key" />} Sign once in MetaMask
+          </button>
+          {busy && <span className="tiny muted" style={{ marginLeft: 10 }}>If no window opened, click the MetaMask icon in the browser toolbar.</span>}
+        </div>
+        {err && <div className="tiny bad" style={{ marginTop: 8 }}>{err}</div>}
+      </Callout>
+    </div>
+  )
+}
+
 /// A plan or a will names people who joined with their own wallets.
 export function NeedFamily({ what, need }) {
+  const { me } = useApp()
+  if (me?.injected && !hasPass(me))
+    return (
+      <div className="wizard">
+        <h1 style={{ margin: '10px 0 6px' }}>Unlock your family first</h1>
+        <p className="muted" style={{ marginBottom: 18 }}>To {what}, Zoza needs {need} from your family list, and this browser has not loaded it yet.</p>
+        <PassBanner />
+      </div>
+    )
   return (
     <div className="wizard">
       <h1 style={{ margin: '10px 0 6px' }}>Invite your family first</h1>

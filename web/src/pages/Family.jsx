@@ -3,7 +3,8 @@ import { api, call, inr, sendBatch, usd } from '../chain.js'
 import { usePerson } from '../data.js'
 import { inviteMessage, ROLES } from '../../../shared/invites.mjs'
 import { serverFetch } from '../anon.js'
-import { authHeader, tokenFor } from '../auth.js'
+import { authHeader, hasPass, tokenFor } from '../auth.js'
+import { PassBanner } from './PlanNew.jsx'
 import { byAddress, family, loadMembers, loadSelf, nameOf, removeInvite, saveSelf } from '../family.js'
 import { go, useApp } from '../main.jsx'
 import { Addr, Callout, Empty, Face, Icon, rel, Skel, Tip, useNow } from '../ui.jsx'
@@ -160,7 +161,7 @@ function InviteCard({ me }) {
   const [loadErr, setLoadErr] = useState(null)
   const [copied, setCopied] = useState(null)
   // A connected wallet reads its sent invites only after signing a read pass.
-  const [locked, setLocked] = useState(false)
+  const [locked, setLocked] = useState(() => !hasPass(me))
   const unnamed = me.id === 'self' && (!me.name || me.name === 'You')
   const [myName, setMyName] = useState('')
   // A connected wallet's prompt may sit unseen in its side panel: say what it waits for.
@@ -170,7 +171,8 @@ function InviteCard({ me }) {
   const load = useCallback(async () => {
     try {
       const res = await serverFetch(`/api/invites?from=${me.address}`, { headers: await authHeader([me]) }, me.address)
-      setLocked(res.status === 401)
+      if (res.status === 401) setLocked(true)
+      else if (res.ok) setLocked(false)
       setLoadErr(null)
       if (!res.ok) return
       const list = (await res.json()).filter((i) => i.from.toLowerCase() === me.address.toLowerCase())
@@ -284,14 +286,9 @@ function InviteCard({ me }) {
         {err && <div className="tiny bad">{err}</div>}
         {loadErr && <div className="tiny muted">Could not load your invites just now ({loadErr}). Trying again every 10 s.</div>}
         {locked && !busy && !step && (
-          <Callout tone="warn">
-            You have not let this browser read your family list yet, so people who joined do not show.
-            <div style={{ marginTop: 8 }}>
-              <button className="btn small" onClick={unlock}>
-                <Icon name="key" /> Sign once to see who joined
-              </button>
-            </div>
-          </Callout>
+          <button className="btn ghost small" onClick={unlock}>
+            <Icon name="key" /> Sign once to see who joined
+          </button>
         )}
       </div>
       {sent.some((i) => !i.acceptedBy) && <p className="tiny muted" style={{ marginTop: 14 }}>Send each link to the person yourself, by WhatsApp or any chat. They join by opening it.</p>}
@@ -381,6 +378,7 @@ export default function Family() {
 
   return (
     <>
+      <PassBanner />
       <div className="page-head">
         <div className="hello">
           <Face person={me} size="xl" />

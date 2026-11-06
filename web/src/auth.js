@@ -30,6 +30,14 @@ export async function tokenFor(person, ask = false) {
   return all[a]
 }
 
+/// Whether the server will show this person's family list and inbox without a
+/// new signature. A key made in this browser signs the pass silently.
+export function hasPass(person) {
+  if (!person?.signer?.signMessage) return false
+  if (!person.signer.injected) return true
+  return saved()[person.address.toLowerCase()]?.expiry > Math.floor(Date.now() / 1000) + 3600
+}
+
 export async function authHeader(people) {
   const tokens = []
   for (const p of people) {
