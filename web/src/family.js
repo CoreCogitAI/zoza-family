@@ -52,7 +52,15 @@ function demoKeys() {
   return null
 }
 
-let members = []
+// Last known members, so names show at once while a fresh list loads privately.
+const MEMBERS = 'zf.members'
+let members = (() => {
+  try {
+    return JSON.parse(get(MEMBERS) ?? '[]')
+  } catch {
+    return []
+  }
+})()
 export let family = build()
 
 function build() {
@@ -118,6 +126,7 @@ export function signOut() {
   set(SELF, null)
   set(MODE, null)
   set('zf.me', null)
+  set(MEMBERS, null)
   members = []
   family = build()
 }
@@ -163,11 +172,14 @@ export async function loadMembers() {
   try {
     const headers = await authHeader(readers)
     const res = readers.length ? await serverFetch(`/api/invites?from=${readers.map((p) => p.address).join(',')}`, { headers }) : null
-    const list = res?.ok ? await res.json() : []
+    // A failed or locked read keeps the last known list.
+    if (res && !res.ok) return family
+    const list = res ? await res.json() : []
     members = list
       .filter((i) => i.acceptedBy)
       .map((i) => ({ id: `m-${i.acceptedBy.toLowerCase()}`, name: i.name, role: `${i.fromName}'s ${i.role === 'family' ? 'family' : i.role}`, about: 'Joined with their own wallet', tone: toneOf(i.acceptedBy), address: i.acceptedBy, signer: null }))
     if (s?.inviter) members.push({ id: `m-${s.inviter.address.toLowerCase()}`, name: s.inviter.name, role: 'Invited you', about: 'Invited you to their family', tone: toneOf(s.inviter.address), address: s.inviter.address, signer: null })
+    set(MEMBERS, JSON.stringify(members))
   } catch {}
   family = build()
   return family

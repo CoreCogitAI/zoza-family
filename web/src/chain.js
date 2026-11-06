@@ -11,8 +11,23 @@ const MULTICALL3 = '0xcA11bde05977b3631167028862bE2a173976CA11'
 
 export async function loadConfig() {
   // Direct: it carries no family data, and the page itself just came from this server.
-  const res = await fetch('/api/config')
-  config = await res.json()
+  // A saved copy lets a returning visitor start at once; a changed config reloads.
+  const fresh = fetch('/api/config').then((r) => (r.ok ? r.text() : Promise.reject(new Error(`config ${r.status}`))))
+  let saved = null
+  try {
+    saved = localStorage.getItem('zf.config')
+  } catch {}
+  const text = saved ?? (await fresh)
+  fresh.then(
+    (t) => {
+      try {
+        localStorage.setItem('zf.config', t)
+      } catch {}
+      if (saved && t !== saved) location.reload()
+    },
+    () => {},
+  )
+  config = JSON.parse(text)
   const chain = defineChain({
     id: config.chainId,
     name: config.chainName,

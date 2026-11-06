@@ -198,7 +198,8 @@ function App() {
 
   useEffect(() => {
     startAnon()
-    Promise.all([loadConfig(), loadMembers()]).then(([c]) => setCfg(c), (e) => setErr(e.message))
+    // Draw as soon as the config is in; the family list follows over the mixnet.
+    loadConfig().then(setCfg, (e) => setErr(e.message))
   }, [])
   // Someone may have accepted an invite since: refresh the family on each page.
   useEffect(() => {
