@@ -3,7 +3,7 @@
 // an address its owner has proven. The family list lives here, off chain.
 import { randomBytes } from 'node:crypto'
 import { getAddress, isAddress, verifyMessage } from 'viem'
-import { acceptMessage, inviteMessage, ROLES } from '../shared/invites.mjs'
+import { acceptMessage, inviteMessage, removeMessage, ROLES } from '../shared/invites.mjs'
 import { db, notify, save } from './store.mjs'
 
 const MAX_OPEN = 30
@@ -52,6 +52,24 @@ export async function accept(code, { address, signature }) {
   save()
   notify([i.from], { kind: 'family', title: `${i.name} joined your family`, body: `${i.name} accepted your invite as your ${ROLES[i.role]}, with wallet ${who}.` })
   return view(i)
+}
+
+/// The inviter cancels or removes an invite, or the person who accepted it
+/// leaves. Either one signs removeMessage; the other is told.
+export async function remove(code, { address, signature }) {
+  const i = db.invites[code]
+  if (!i) throw new InviteError('no such invite')
+  if (!isAddress(address ?? '')) throw new InviteError('bad address')
+  const who = getAddress(address)
+  if (who !== i.from && who !== i.acceptedBy) throw new InviteError('only the inviter or the person who joined can remove this')
+  if (!(await signedBy(who, removeMessage(i), signature))) throw new InviteError('signature does not match this wallet')
+  delete db.invites[code]
+  save()
+  if (i.acceptedBy) {
+    const other = who === i.from ? i.acceptedBy : i.from
+    notify([other], { kind: 'family', title: who === i.from ? `${i.fromName} removed you from their family` : `${i.name} left your family`, body: `The invite for ${i.name} as ${i.fromName}'s ${ROLES[i.role]} was removed. Plans or a will that name this wallet are not changed.` })
+  }
+  return { removed: code }
 }
 
 /// Everyone the given people invited, pending and accepted, and the invites

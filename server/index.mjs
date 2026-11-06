@@ -77,9 +77,10 @@ async function api(req, res, url) {
     if (!from.length) return send(res, 401, { error: 'sign in to read this family list' })
     return send(res, 200, invites.sentBy(from))
   }
-  const inv = path.match(/^\/api\/invites\/([A-Za-z0-9_-]{12})(\/accept)?$/)
+  const inv = path.match(/^\/api\/invites\/([A-Za-z0-9_-]{12})(\/accept|\/remove)?$/)
   if (inv && req.method === 'GET' && !inv[2]) return send(res, 200, invites.get(inv[1]))
-  if (inv && req.method === 'POST' && inv[2]) return send(res, 200, await invites.accept(inv[1], await readJson(req)))
+  if (inv && req.method === 'POST' && inv[2] === '/accept') return send(res, 200, await invites.accept(inv[1], await readJson(req)))
+  if (inv && req.method === 'POST' && inv[2] === '/remove') return send(res, 200, await invites.remove(inv[1], await readJson(req)))
 
   const inbox = path.match(/^\/api\/inbox\/(0x[0-9a-fA-F]{40})$/)
   if (req.method === 'GET' && inbox) {
