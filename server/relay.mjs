@@ -10,7 +10,9 @@ import { abi, client, deployment, fees, relayer, UNIVERSAL_ROUTER } from './conf
 const MAX_CALLS = 16
 const WINDOW_MS = 60_000
 const PER_WINDOW = Number(process.env.RELAY_PER_MINUTE ?? 12)
+const PER_HOUR = Number(process.env.RELAY_PER_HOUR ?? 300) // all accounts together, so new accounts cannot drain the relayer
 const recent = new Map()
+let hour = []
 
 let queue = Promise.resolve()
 function serial(fn) {
@@ -61,7 +63,10 @@ function rateLimit(account) {
   const now = Date.now()
   const hits = (recent.get(account) ?? []).filter((t) => now - t < WINDOW_MS)
   if (hits.length >= PER_WINDOW) throw new RelayError('too many requests, wait a minute', 429)
+  hour = hour.filter((t) => now - t < 3_600_000)
+  if (hour.length >= PER_HOUR) throw new RelayError('the relayer is busy, try again later', 429)
   hits.push(now)
+  hour.push(now)
   recent.set(account, hits)
 }
 
