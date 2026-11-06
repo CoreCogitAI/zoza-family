@@ -15,6 +15,7 @@ import Privacy from './pages/Privacy.jsx'
 import How from './pages/How.jsx'
 import Join from './pages/Join.jsx'
 import Welcome from './pages/Welcome.jsx'
+import Startup from './pages/Startup.jsx'
 import './styles.css'
 
 const Ctx = createContext(null)
@@ -180,6 +181,7 @@ function PrivChip() {
 
 const NAV = [
   ['/family', 'My family'],
+  ['/startup', 'Startup'],
   ['/will', 'Will'],
   ['/privacy', 'Privacy'],
   ['/how', 'How it works'],
@@ -213,11 +215,12 @@ function App() {
   if (!cfg) return <main><span className="spinner" /> Loading…</main>
 
   const [, page, arg] = hash.split('/')
-  const needsMe = ['family', 'plan', 'will', 'gift'].includes(page)
+  const needsMe = ['family', 'plan', 'will', 'gift', 'startup'].includes(page)
   let body
   if (!page) body = <Home />
   else if (page === 'welcome' || (needsMe && !me)) body = <Welcome next={page === 'welcome' ? '/family' : hash} />
   else if (page === 'family') body = <Family key={me.id} />
+  else if (page === 'startup') body = <Startup key={me.id} />
   else if (page === 'plan' && arg === 'new') body = <PlanNew key={me.id} />
   else if (page === 'plan') body = <Plan id={Number(arg)} key={`${me.id}-${arg}`} />
   else if (page === 'will') body = <Will key={me.id} edit={arg === 'edit'} />
