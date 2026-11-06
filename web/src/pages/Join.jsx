@@ -40,7 +40,7 @@ export default function Join({ code }) {
     const res = await serverFetch(`/api/invites/${code}/accept`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ address, signature }) }, address)
     const j = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error(j.error ?? `error ${res.status}`)
-    saveSelf({ kind, address, key, name: inv.name, role: inv.role, inviter: { address: inv.from, name: inv.fromName } })
+    saveSelf({ kind, address, key, wallet: kind === 'injected' ? mine?.wallet : undefined, name: inv.name, role: inv.role, inviter: { address: inv.from, name: inv.fromName } })
     await tokenFor(family.find((p) => p.id === 'self'), true).catch(() => null)
     await loadMembers()
     setMe('self')

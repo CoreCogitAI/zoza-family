@@ -52,15 +52,29 @@ function demoKeys() {
   return null
 }
 
-// Last known members, so names show at once while a fresh list loads privately.
-const MEMBERS = 'zf.members'
-let members = (() => {
+// Last known members of each person's family, so names show at once while a
+// fresh list loads privately.
+const membersKey = () => `zf.members.${(loadSelf()?.address ?? mode() ?? '').toLowerCase()}`
+function readMembers() {
   try {
-    return JSON.parse(get(MEMBERS) ?? '[]')
+    return JSON.parse(get(membersKey()) ?? '[]')
   } catch {
     return []
   }
-})()
+}
+let members = readMembers()
+
+// One wallet can hold several accounts (a father and a son, say). Each keeps its
+// own name, role and inviter, so switching accounts does not wipe them.
+const PROFILES = 'zf.profiles'
+function profiles() {
+  try {
+    return JSON.parse(get(PROFILES) ?? '{}')
+  } catch {
+    return {}
+  }
+}
+export const profileOf = (address) => profiles()[address.toLowerCase()] ?? { name: 'You', role: 'family', inviter: null }
 export let family = build()
 
 function build() {
@@ -89,7 +103,10 @@ function self() {
 }
 
 export function saveSelf(s) {
+  const before = loadSelf()?.address?.toLowerCase()
   set(SELF, JSON.stringify(s))
+  if (s?.address) set(PROFILES, JSON.stringify({ ...profiles(), [s.address.toLowerCase()]: { name: s.name, role: s.role, inviter: s.inviter ?? null } }))
+  if (s?.address?.toLowerCase() !== before) members = readMembers()
   if (mode() !== 'demo') set(MODE, 'wallet')
   family = build()
 }
@@ -104,7 +121,7 @@ export async function connectWallet(w, step = () => {}) {
   // A wallet that never answers the switch must not hold up signing in.
   await Promise.race([client.switchChain({ id: sepolia.id }).catch(() => {}), new Promise((ok) => setTimeout(ok, 15_000))])
   set(MODE, 'wallet')
-  saveSelf({ kind: 'injected', wallet: w.id, address: getAddress(address), name: loadSelf()?.name ?? 'You', role: 'family', inviter: null })
+  saveSelf({ kind: 'injected', wallet: w.id, address: getAddress(address), ...profileOf(address) })
   choose('self')
   // One signature, so the inbox and family list can be read for a week. Not
   // awaited: the page opens now, and the invite card asks again if it is skipped.
@@ -130,10 +147,10 @@ export function startDemo() {
 }
 
 export function signOut() {
+  set(membersKey(), null)
   set(SELF, null)
   set(MODE, null)
   set('zf.me', null)
-  set(MEMBERS, null)
   members = []
   family = build()
 }
@@ -166,9 +183,14 @@ export function watchWallet(onChange) {
     // No accounts also means the wallet locked itself; keep the session, since
     // reads need no wallet and a write asks it to unlock. Sign out is in the menu.
     if (!accounts?.length) return
-    if (getAddress(accounts[0]) !== getAddress(now.address)) saveSelf({ ...now, address: getAddress(accounts[0]), name: 'You', inviter: null })
-    else return
+    if (getAddress(accounts[0]) === getAddress(now.address)) return
+    saveSelf({ ...now, address: getAddress(accounts[0]), ...profileOf(accounts[0]) })
     onChange()
+    // A new account signs its own read pass, then its family list loads.
+    tokenFor(self(), true)
+      .then(() => loadMembers())
+      .then(() => onChange())
+      .catch(() => null)
   }
   p.on('accountsChanged', handler)
   return () => p.removeListener?.('accountsChanged', handler)
@@ -184,11 +206,17 @@ export async function loadMembers() {
     // A failed or locked read keeps the last known list.
     if (res && !res.ok) return family
     const list = res ? await res.json() : []
+    const mine = new Set(readers.map((p) => p.address.toLowerCase()))
+    // Invites these people accepted: the inviter is family too.
+    const inviters = list
+      .filter((i) => mine.has(i.acceptedBy?.toLowerCase()) && !mine.has(i.from.toLowerCase()))
+      .map((i) => ({ id: `m-${i.from.toLowerCase()}`, name: i.fromName, role: 'Invited you', about: 'Invited you to their family', tone: toneOf(i.from), address: i.from, signer: null }))
     members = list
-      .filter((i) => i.acceptedBy)
+      .filter((i) => i.acceptedBy && mine.has(i.from.toLowerCase()))
       .map((i) => ({ id: `m-${i.acceptedBy.toLowerCase()}`, name: i.name, role: `${i.fromName}'s ${i.role === 'family' ? 'family' : i.role}`, about: 'Joined with their own wallet', tone: toneOf(i.acceptedBy), address: i.acceptedBy, signer: null }))
+    members.push(...inviters)
     if (s?.inviter) members.push({ id: `m-${s.inviter.address.toLowerCase()}`, name: s.inviter.name, role: 'Invited you', about: 'Invited you to their family', tone: toneOf(s.inviter.address), address: s.inviter.address, signer: null })
-    set(MEMBERS, JSON.stringify(members))
+    set(membersKey(), JSON.stringify(members))
   } catch {}
   family = build()
   return family

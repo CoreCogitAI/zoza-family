@@ -152,7 +152,7 @@ function InviteCard({ me }) {
       const res = await serverFetch(`/api/invites?from=${me.address}`, { headers: await authHeader([me]) }, me.address)
       setLocked(res.status === 401)
       if (!res.ok) return
-      const list = await res.json()
+      const list = (await res.json()).filter((i) => i.from.toLowerCase() === me.address.toLowerCase())
       // Keep links made here even if a slow read has not listed them yet.
       setSent((old) => [...list, ...old.filter((o) => !list.some((i) => i.code === o.code))].sort((a, b) => b.at - a.at))
       if (list.some((i) => i.acceptedBy && !byAddress(i.acceptedBy))) {
@@ -454,7 +454,7 @@ export default function Family() {
 
         <aside className="stack">
           <WillCard me={me} w={data?.will} now={now} onCheckIn={checkIn} />
-          <InviteCard me={me} />
+          <InviteCard me={me} key={me.address} />
           {!me.persona && !loadSelf()?.inviter && <JoinCard />}
           <div className="card">
             <h3 style={{ marginBottom: 10 }}>Your family</h3>
