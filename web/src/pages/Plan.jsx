@@ -20,6 +20,11 @@ export default function Plan({ id }) {
   const [topUp, setTopUp] = useState(null)
   const [childModal, setChildModal] = useState(false)
   const [newChild, setNewChild] = useState('')
+  const [changing, setChanging] = useState(false)
+  const [ending, setEnding] = useState(false)
+  const [newNominee, setNewNominee] = useState('')
+  const [newAmount, setNewAmount] = useState('')
+  const [moreMonths, setMoreMonths] = useState(6)
 
   if (!plan) return error ? <Callout tone="bad">Could not read plan #{id}: {error}</Callout> : <p><span className="spinner" /> Reading the plan privately…</p>
 
@@ -33,6 +38,30 @@ export default function Plan({ id }) {
   const book = [...plan.book].reverse()
   const run = (title, calls) => send({ title, signer: me.signer, calls, after: refresh })
   const giftLink = `${location.origin}/#/gift/${plan.id}`
+  const period = BigInt(plan.period)
+  // Instalments still to collect between `from` and `until` (one per period, the first at `from`).
+  const left = (from, until) => (from < until ? (until - 1n - from) / period + 1n : 0n)
+  const opensAt = Number(plan.nomineeSince ?? 0n) ? Number(plan.nomineeSince) + plan.period : 0
+  const canEnd = plan.nomineeAgreesToClose && now >= opensAt
+  const planId = BigInt(plan.id)
+  const changeNominee = () => {
+    setChanging(false)
+    run('Change the nominee', [call.savings('setNominee', [planId, newNominee])])
+  }
+  const changeAmount = async () => {
+    const amt = parseUnits(newAmount || '0', 6)
+    const calls = []
+    if (amt > plan.instalment) calls.push(call.usdc('approve', [config.savings, (await allowanceOf(me.address)) + left(plan.nextDue, plan.maturity) * (amt - plan.instalment)]))
+    calls.push(call.savings('setInstalment', [planId, amt]))
+    setChanging(false)
+    run('Change the monthly amount', calls)
+  }
+  const extend = async () => {
+    const until = plan.maturity + BigInt(moreMonths) * period
+    const extra = left(plan.nextDue, until) - left(plan.nextDue, plan.maturity)
+    setChanging(false)
+    run('Extend the plan', [call.usdc('approve', [config.savings, (await allowanceOf(me.address)) + extra * plan.instalment]), call.savings('extendMaturity', [planId, until])])
+  }
 
   return (
     <>
@@ -156,10 +185,19 @@ export default function Plan({ id }) {
               <button className="btn block" onClick={() => run(plan.mandateOn ? 'Pause monthly saving' : 'Resume monthly saving', [call.savings('setMandate', [BigInt(plan.id), !plan.mandateOn])])} disabled={mature}>
                 <Icon name={plan.mandateOn ? 'pause' : 'play'} /> {plan.mandateOn ? 'Pause monthly saving' : 'Resume monthly saving'}
               </button>
-              <button className="btn block danger" disabled={!plan.nomineeAgreesToClose} onClick={() => run('Close early', [call.savings('closeEarly', [BigInt(plan.id)])])}>
-                Close early and take it back
+              <button className="btn block" onClick={() => (setNewAmount(''), setNewNominee(''), setChanging(true))} disabled={mature}>
+                <Icon name="refresh" /> Change nominee, amount or date
               </button>
-              <p className="tiny muted">{plan.nomineeAgreesToClose ? `${nameOf(plan.nominee)} agreed. Closing returns everything to your wallet.` : `Closing early needs ${nameOf(plan.nominee)}, the nominee, to agree first.`}</p>
+              <button className="btn block danger" disabled={!canEnd} onClick={() => setEnding(true)}>
+                End the plan early
+              </button>
+              <p className="tiny muted">
+                {!plan.nomineeAgreesToClose
+                  ? `Ending early needs ${nameOf(plan.nominee)}, the nominee, to agree first.`
+                  : now < opensAt
+                    ? `${nameOf(plan.nominee)} agreed. The nominee changed recently, so ending early opens ${rel(opensAt, now)}.`
+                    : `${nameOf(plan.nominee)} agreed. You can pay ${nameOf(plan.child)} now or take it back.`}
+              </p>
             </div>
           )}
           {isNominee && !plan.closed && (
@@ -169,9 +207,10 @@ export default function Plan({ id }) {
               <button className="btn block" onClick={() => setChildModal(true)}>
                 <Icon name="wallet" /> Point to {nameOf(plan.child)}'s new wallet
               </button>
-              <button className="btn block" disabled={plan.nomineeAgreesToClose} onClick={() => run('Agree to close early', [call.savings('agreeToClose', [BigInt(plan.id)])])}>
-                {plan.nomineeAgreesToClose ? 'You agreed to close early' : 'Agree to close early'}
+              <button className="btn block" disabled={plan.nomineeAgreesToClose} onClick={() => run('Agree to end the plan early', [call.savings('agreeToClose', [BigInt(plan.id)])])}>
+                {plan.nomineeAgreesToClose ? 'You agreed to end it early' : 'Agree to end the plan early'}
               </button>
+              <p className="tiny muted">If you agree, {nameOf(plan.parent)} can pay {nameOf(plan.child)} now, for fees that cannot wait, or take the money back.</p>
             </div>
           )}
           {isChild && (
@@ -221,6 +260,70 @@ export default function Plan({ id }) {
             Add to plan
           </button>
         </div>
+      </Modal>
+
+      <Modal open={changing} title="Change the plan" onClose={() => setChanging(false)}>
+        <div className="stack">
+          <div>
+            <div className="field-label">Nominee</div>
+            <div className="choices" style={{ marginTop: 6 }}>
+              {family
+                .filter((p) => ![plan.parent, plan.child, plan.nominee].some((a) => a.toLowerCase() === p.address.toLowerCase()))
+                .map((p) => (
+                  <button key={p.id} className="choice" aria-pressed={newNominee === p.address} onClick={() => setNewNominee(p.address)}>
+                    <Face person={p} />
+                    <span>
+                      <b>{p.name}</b>
+                      <small>{p.role}</small>
+                    </span>
+                  </button>
+                ))}
+            </div>
+            <input style={{ marginTop: 8 }} placeholder="or paste their wallet address, 0x…" value={newNominee} onChange={(e) => setNewNominee(e.target.value.trim())} />
+            <p className="tiny muted" style={{ marginTop: 6 }}>{nameOf(plan.nominee)} and {nameOf(plan.child)} are told. Any agreement to end early is dropped, and ending early waits one period.</p>
+            <button className="btn small" style={{ marginTop: 6 }} disabled={!isAddress(newNominee)} onClick={changeNominee}>
+              Make them the nominee
+            </button>
+          </div>
+          <div>
+            <div className="field-label">Monthly amount</div>
+            <div className="amount-input">
+              <input inputMode="decimal" placeholder={usd(plan.instalment)} value={newAmount} onChange={(e) => setNewAmount(e.target.value.replace(/[^0-9.]/g, ''))} aria-label="New monthly amount in USDC" />
+              <span>USDC</span>
+            </div>
+            <p className="tiny muted" style={{ marginTop: 6 }}>From the next instalment on. Raising it adds to your mandate for the months left.</p>
+            <button className="btn small" style={{ marginTop: 6 }} disabled={!(Number(newAmount) > 0)} onClick={changeAmount}>
+              Change the amount
+            </button>
+          </div>
+          <div>
+            <div className="field-label">Maturity</div>
+            <div className="choices g2" style={{ marginTop: 6 }}>
+              {[6, 12, 24].map((m) => (
+                <button key={m} className="choice" aria-pressed={moreMonths === m} onClick={() => setMoreMonths(m)} style={{ justifyContent: 'center' }}>
+                  <b>{m} more months</b>
+                </button>
+              ))}
+            </div>
+            <p className="tiny muted" style={{ marginTop: 6 }}>Only later, never earlier: a longer lock only protects {nameOf(plan.child)}. Now it matures {dateOf(plan.maturity)}.</p>
+            <button className="btn small" style={{ marginTop: 6 }} onClick={extend}>
+              Extend the plan
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={ending} title="End the plan early" onClose={() => setEnding(false)}>
+        <p className="small">{nameOf(plan.nominee)} agreed. Where should the {usd(plan.value)} USDC go?</p>
+        <div className="stack-sm" style={{ marginTop: 12 }}>
+          <button className="btn primary block" onClick={() => (setEnding(false), run(`Pay ${nameOf(plan.child)} now`, [call.savings('payChildEarly', [planId])]))}>
+            <Icon name="heart" /> Pay {nameOf(plan.child)} now
+          </button>
+          <button className="btn danger block" onClick={() => (setEnding(false), run('Take it back', [call.savings('closeEarly', [planId])]))}>
+            Take it back to my wallet
+          </button>
+        </div>
+        <p className="tiny muted" style={{ marginTop: 10 }}>Either way the plan closes. No penalty.</p>
       </Modal>
 
       <Modal open={childModal} title={`${nameOf(plan.child)}'s new wallet`} onClose={() => setChildModal(false)}>

@@ -5,7 +5,8 @@ Savings plans for your children, a nominee, and a will that only opens if you go
 Families in India save for a child's studies or wedding every month: recurring deposits, child plans, a nominee on every form. Zoza Family keeps that habit and removes the middleman:
 
 - **Savings plans.** A fixed amount is collected each month from the parent's wallet, capped by the contract at one instalment per period. Money paid in is locked until maturity, then goes to the child. Plans can optionally earn Compound III's variable supply rate.
-- **A nominee.** The nominee guards the plan. They can point it to the child's new wallet, and must agree before the parent closes it early. They can never take the money.
+- **A nominee.** The nominee guards the plan. They can point it to the child's new wallet, and must agree before the parent ends it early. They can never take the money.
+- **Plans that change with life,** as at a bank. The parent can change the nominee, change the monthly amount, or extend the maturity (only later). With the nominee's agreement, the parent can end a plan early, either paying the child now (for fees that cannot wait) or taking the money back. No penalty.
 - **A will in the wallet.** Each heir gets a key on the parent's wallet that does nothing while the parent is around. After a silence period with no check-in, and a cancel window nobody uses, each heir can send only their own share to only their own wallet.
 - **Gifts from family.** A grandparent pays in ETH. The Uniswap API swaps it to USDC inside the same signed batch, and the plan receives at least the quoted minimum.
 - **Family joins with their own wallets.** The parent sends an invite link. The heir, child or nominee opens it and accepts by signing with MetaMask or any browser wallet, or makes a wallet there. Plans and wills only name addresses whose owners signed. An heir with MetaMask claims their share gaslessly. Anyone can also connect a wallet from the person menu to save into plans or give gifts, paying their own small gas. Writing a will needs the Zoza wallet.
@@ -19,7 +20,7 @@ Requirements: Node 24, Foundry, Google Chrome (or any modern browser), and a `.e
 
 ```sh
 ./run.sh            # build the website, start the server: http://127.0.0.1:8790
-./run.sh test       # 46 contract tests on a Sepolia fork against the real Calibur and Compound
+./run.sh test       # 51 contract tests on a Sepolia fork against the real Calibur and Compound
 ./run.sh e2e        # live end-to-end checks against the running server
 ./run.sh --stop
 ```
@@ -93,7 +94,7 @@ With `WATCHER=cre` the server stops writing and only turns chain changes into me
 
 ## What is tested
 
-- **Contracts:** 46 Foundry tests on a Sepolia fork, against the deployed Calibur, Compound III and Circle USDC. They cover heirs acting early, taking more than a share, paying someone else, using unlisted tokens, calling anything but `transfer`, changing the wallet's keys, revoked and replaced wills, missed instalments, one pull per period, allowance caps, nominee rights, donation attacks and fair interest between plans.
+- **Contracts:** 51 Foundry tests on a Sepolia fork, against the deployed Calibur, Compound III and Circle USDC. They cover heirs acting early, taking more than a share, paying someone else, using unlisted tokens, calling anything but `transfer`, changing the wallet's keys, revoked and replaced wills, missed instalments, one pull per period, allowance caps, nominee rights, changing the nominee, amount and maturity, paying the child early, donation attacks and fair interest between plans.
 - **Live, end to end** ([server/e2e.mjs](server/e2e.mjs)): a fresh family each run, through the real server and Sepolia. One gasless transaction delegates the parent to Calibur, writes her will and opens a plan. The relayer refuses outside calls. The watcher collects. The parent tops up and the monthly mandate is left intact. A grandparent's ETH gift goes through the Uniswap API into the plan. A claim opens after silence and is cancelled by "I'm here". Heirs are refused early, over their share and to someone else, then each takes their exact share. The nominee moves the plan to a new wallet, and the plan matures to it.
 - **In the browser:** the same flows driven through the website in headless Chrome, signing in the page.
 
@@ -102,6 +103,7 @@ With `WATCHER=cre` the server stops writing and only turns chain changes into me
 - The relayer pays only for batches that touch Zoza Family's contracts, the plan token (approve to FamilySavings, transfer) or Uniswap's Universal Router. It never adds admin keys, and only adds keys with the FamilyWill hook. It only accepts EIP-7702 authorizations to Calibur, signed by the account itself. It simulates each batch before paying, with a 30% gas margin, and waits for the wallet to show Calibur code.
 - The relayer and the test faucet are limited per account and per hour overall (`RELAY_PER_HOUR`, `FAUCET_PER_HOUR`). A public server must set `NOTIFY_TOKEN`, or anyone could post messages into family inboxes.
 - Inboxes and family lists hold names and relationships the chain does not show. The server only returns them to a browser that signed a read pass for that address (valid 7 days). Invite codes are shown only to their sender.
+- Changing the nominee drops any agreement to end early, makes ending early wait one period, and tells the old nominee, the new nominee and the child. It is a delay and a notice, not a veto: a parent who replaces the nominee can end the plan early after that period. The parent can also point the plan to another wallet as the child, as the nominee can.
 - `approve` replaces an allowance, so the website always approves the existing allowance plus the new amount. A top-up, a gift or a second plan never cancels another plan's mandate.
 - The watcher and the relayer cannot move money. The watcher's actions are permissionless, and each contract checks its own timing and amounts.
 - A will's shares are of the balance when the first share of each token is paid. The parent can spend freely before that.
@@ -127,7 +129,7 @@ Built with Claude Code (Anthropic) as a pair programmer. Most of the code was wr
 | Area | Files | Written by Claude Code | Done by the team |
 |---|---|---|---|
 | Contracts | [src/](src/) | FamilyWill, FamilySavings, FamilyWatcher and the interfaces | The product: a will in the parent's own wallet, monthly savings for a child's studies or wedding, a nominee, optional interest |
-| Contract tests | [test/](test/) | All 46 tests | Review |
+| Contract tests | [test/](test/) | All 51 tests | Review |
 | Server | [server/](server/), [shared/](shared/) | Relayer, watcher, Uniswap API quotes, faucet, inbox, e2e checks | Test wallets, Sepolia ETH and the Uniswap API key |
 | Website | [web/](web/) | All pages, styles and the Anon-RPC client | Direction and review in the browser |
 | Chainlink CRE | [cre/](cre/) | The workflow | Review |

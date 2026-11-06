@@ -79,6 +79,7 @@ export function plainError(msg) {
     TokenNotInWill: 'That token is not in the will.',
     NotAnHeirKey: 'This wallet is not named in that will.',
     NomineeMustAgree: 'The nominee has to agree first.',
+    NomineeTooNew: 'The nominee changed recently. Early closing opens one period after the change.',
     NotDue: 'This month\'s instalment is already collected.',
     PastMaturity: 'The plan has matured.',
     NotMature: 'The plan has not matured yet.',
