@@ -122,20 +122,17 @@ web/            the website (React, viem, Anon-RPC)
 cre/            the Chainlink CRE workflow
 ```
 
-## AI use
+## How this was built
 
-Built with Claude Code (Anthropic) as a pair programmer. Most of the code was written by Claude Code, from the team's design and instructions. The team reviewed it, and it was tested against Sepolia.
+Shaik Sajid (CoreCogitAI) built Zoza Family with Claude Code (Anthropic) as an AI pair programmer. Claude Code read and analysed the new protocols the project builds on (Uniswap's Calibur and the Uniswap API, the Ethereum Foundation's Anon-RPC, and Chainlink CRE) and wrote the code that uses them: the contracts and tests ([src/](src/), [test/](test/)), the server ([server/](server/), [shared/](shared/)), the website ([web/](web/)), the Chainlink CRE workflow ([cre/](cre/)) and drafts of these docs. Every commit is co-authored with Claude and says so.
 
-| Area | Files | Written by Claude Code | Done by the team |
-|---|---|---|---|
-| Contracts | [src/](src/) | FamilyWill, FamilySavings, FamilyWatcher and the interfaces | The product: a will in the parent's own wallet, monthly savings for a child's studies or wedding, a nominee, optional interest |
-| Contract tests | [test/](test/) | All 51 tests | Review |
-| Server | [server/](server/), [shared/](shared/) | Relayer, watcher, Uniswap API quotes, faucet, inbox, e2e checks | Test wallets, Sepolia ETH and the Uniswap API key |
-| Website | [web/](web/) | All pages, styles and the Anon-RPC client | Direction and review in the browser |
-| Chainlink CRE | [cre/](cre/) | The workflow | Review |
-| Docs | README, [FEEDBACK.md](FEEDBACK.md), [ISSUES.md](ISSUES.md) | Drafts | Review |
+The team decided what to build and checked that it worked:
 
-The idea and scope, and the choice of Uniswap Calibur and the Uniswap API, Anon-RPC and Chainlink CRE, came from the team. Each step was committed separately after the team reviewed it. Bugs found in live testing (a top-up that replaced the mandate, watcher transactions running out of gas) were fixed in the same collaboration.
+- The product: a will inside the parent's own wallet, monthly savings for a child's studies or wedding, a nominee, and optional interest, from how Indian families already save.
+- The technology: Uniswap's Calibur and the Uniswap API, Anon-RPC and Chainlink CRE.
+- Features chosen by comparing with banks: changing the nominee, the monthly amount and the maturity, and paying the child early.
+- Live testing of the public site, which found issues that were then fixed: family invites and inboxes readable by anyone, example amounts that looked real, and new visitors shown as the demo parent.
+- Test wallets, Sepolia ETH, the Uniswap API key and the public test site.
 
 ## License
 
