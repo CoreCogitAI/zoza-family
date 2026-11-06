@@ -1,7 +1,7 @@
 import { createPublicClient, custom, defineChain, encodeFunctionData, erc20Abi, formatUnits, getAddress } from 'viem'
 import abi from '../../shared/abi.json'
 import { CALIBUR, isCalibur, signBatch, toWire } from '../../shared/calibur.mjs'
-import { provider } from './anon.js'
+import { provider, serverFetch } from './anon.js'
 
 export { abi }
 export let config = null
@@ -10,6 +10,7 @@ export let client = null
 const MULTICALL3 = '0xcA11bde05977b3631167028862bE2a173976CA11'
 
 export async function loadConfig() {
+  // Direct: it carries no family data, and the page itself just came from this server.
   const res = await fetch('/api/config')
   config = await res.json()
   const chain = defineChain({
@@ -62,7 +63,7 @@ export async function sendBatch({ signer, account, calls, onStep = () => {} }) {
     body.authorization = await signer.signAuthorization({ contractAddress: CALIBUR, chainId: config.chainId, nonce })
   }
   onStep('send')
-  const res = await fetch('/api/relay', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(toWire(body)) })
+  const res = await serverFetch('/api/relay', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(toWire(body)) }, account)
   const json = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(plainError(json.error ?? `relayer error ${res.status}`))
   onStep('done')
@@ -87,6 +88,8 @@ export function plainError(msg) {
     BadPlan: 'Something in the plan is not allowed. Check the amounts and dates.',
     BadWill: 'Shares must add up to 100%, with no one listed twice.',
     HeirKeyNotGuarded: 'An heir key was not set up with the will\'s guard.',
+    NoTunnelExitError: 'The Nox mixnet has no exit node right now, so nothing was sent. Try again in a minute, or choose another network on the Privacy page.',
+    TunnelOpenTimeoutError: 'The Nox mixnet did not open a connection in time, so nothing was sent. Try again in a minute, or choose another network on the Privacy page.',
   }
   for (const [k, v] of Object.entries(map)) if (msg.includes(k)) return v
   return msg.replace(/^the wallet would refuse this: /, 'The wallet refused: ')
@@ -106,8 +109,8 @@ export async function supplyApr() {
   return (Number(r) * 31_536_000) / 1e16
 }
 
-export async function api(path, body) {
-  const res = await fetch(`/api${path}`, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : undefined)
+export async function api(path, body, who) {
+  const res = await serverFetch(`/api${path}`, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {}, who)
   const json = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(json.error ?? `error ${res.status}`)
   return json

@@ -10,7 +10,7 @@ Families in India save for a child's studies or wedding every month: recurring d
 - **A will in the wallet.** Each heir gets a key on the parent's wallet that does nothing while the parent is around. After a silence period with no check-in, and a cancel window nobody uses, each heir can send only their own share to only their own wallet.
 - **Gifts from family.** A grandparent pays in ETH. The Uniswap API swaps it to USDC inside the same signed batch, and the plan receives at least the quoted minimum.
 - **Family joins with their own wallets.** The parent sends an invite link. The heir, child or nominee opens it and accepts by signing with MetaMask or any browser wallet, or makes a wallet there. Plans and wills only name addresses whose owners signed. An heir with MetaMask claims their share gaslessly. Anyone can also connect a wallet from the person menu to save into plans or give gifts, paying their own small gas. Writing a will needs the Zoza wallet.
-- **Private by default.** Every blockchain read the website makes goes through Anon-RPC. Writes are signed in the browser and sent by a relayer, so families never need ETH for gas.
+- **Private by default.** Every blockchain read the website makes, and every call to its own server, goes through Anon-RPC. Writes are signed in the browser and sent by a relayer, so families never need ETH for gas.
 
 It runs on Ethereum Sepolia with test money. It is not a bank deposit, a recurring deposit, insurance or legal advice.
 
@@ -59,13 +59,17 @@ The first thing a family member signs upgrades their own address to Calibur thro
 | The Universal Router call from the API, batched with approve + deposit | [web/src/pages/Gift.jsx#L49](web/src/pages/Gift.jsx#L49) |
 | Fork tests against the deployed Calibur | [test/FamilyWill.t.sol](test/FamilyWill.t.sol) |
 
-**Anon-RPC.** The website builds viem's client on an EIP-1193 provider backed by `AnonRpcWorker` ([web/src/anon.js#L104](web/src/anon.js#L104), [web/src/chain.js#L24](web/src/chain.js#L24)). The Nox mixnet is the default (its specifier is on Sepolia); Tor and Nym can be chosen on the Privacy page. Reads are batched with multicall, so one private request carries a whole screen.
+**Anon-RPC.** The website builds viem's client on an EIP-1193 provider backed by `AnonRpcWorker` ([web/src/anon.js#L112](web/src/anon.js#L112), [web/src/chain.js#L25](web/src/chain.js#L25)). The Nox mixnet is the default (its specifier is on Sepolia); Tor and Nym can be chosen on the Privacy page. Reads are batched with multicall, so one private request carries a whole screen.
+
+Calls to the Zoza Family server (relaying signed batches, the inbox, invites, gift quotes, the test faucet) go through the same worker with `serverFetch` ([web/src/anon.js#L189](web/src/anon.js#L189)), so the server and its host see the mixnet's exit node, not the browser's IP. When Nox briefly has no exit node, reads are retried, and a server call is retried only if it never left the browser, so a signed batch is never sent twice. Each call carries an `isolationKey` for the person making it (anon-rpc §9.3). In our tests Nox rotated exit nodes the same way with or without a key, so for now it is a request that other networks may honour.
 
 Traffic that does not go through Anon-RPC, by design:
+- loading the page itself and `/api/config`, which carry no family data;
 - the bootstrap read of the specifier contract, once per page load (anon-rpc §4);
-- calls to the Zoza Family server: relaying signed batches, the inbox, gift quotes and the test faucet. The server sees the browser's IP for these.
+- server calls when the site runs on localhost, because an exit node cannot reach it;
+- a connected wallet's own transactions and reads, which go to that wallet's RPC. Only the wallet can change that.
 
-The Privacy page shows the share of reads sent privately during the visit, and the average latency.
+The server sees the IP that loaded the page, so with few visitors the timing of later calls could link them to it. The Privacy page shows the share of reads and server calls sent privately during the visit, and the average latency.
 
 **Chainlink CRE.** [cre/family-watcher/main.ts](cre/family-watcher/main.ts) runs every minute. It reads plans and wills with the EVM client, gets the list of will owners from the server over HTTP, and sends one signed report to [src/FamilyWatcher.sol#L34](src/FamilyWatcher.sol#L34). That report collects due instalments, opens claims and releases matured plans. Then it posts a message to each affected family through the server's API, with the server's `NOTIFY_TOKEN` read as a CRE secret ([cre/secrets.yaml](cre/secrets.yaml)). Every action in the report is one anyone could call, so a wrong report changes nothing. To simulate it:
 

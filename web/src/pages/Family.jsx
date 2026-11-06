@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, call, inr, sendBatch, usd } from '../chain.js'
 import { usePerson } from '../data.js'
 import { inviteMessage, ROLES } from '../../../shared/invites.mjs'
+import { serverFetch } from '../anon.js'
 import { authHeader } from '../auth.js'
 import { byAddress, family, loadMembers, nameOf } from '../family.js'
 import { useApp } from '../main.jsx'
@@ -120,7 +121,7 @@ function InviteCard({ me }) {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch(`/api/invites?from=${me.address}`, { headers: await authHeader([me]) })
+      const res = await serverFetch(`/api/invites?from=${me.address}`, { headers: await authHeader([me]) }, me.address)
       const list = res.ok ? await res.json() : []
       setSent(list.sort((a, b) => b.at - a.at))
       if (list.some((i) => i.acceptedBy && !byAddress(i.acceptedBy))) {
@@ -139,10 +140,10 @@ function InviteCard({ me }) {
     setBusy(true)
     setErr(null)
     try {
-      const { code } = await fetch('/api/invites/code').then((r) => r.json())
+      const { code } = await serverFetch('/api/invites/code', {}, me.address).then((r) => r.json())
       const i = { code, from: me.address, fromName: me.name, name: name.trim(), role }
       const signature = await me.signer.signMessage({ message: inviteMessage(i) })
-      const res = await fetch('/api/invites', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...i, signature }) })
+      const res = await serverFetch('/api/invites', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...i, signature }) }, me.address)
       const j = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(j.error ?? `error ${res.status}`)
       setName('')
@@ -219,7 +220,7 @@ export default function Family() {
   const getMoney = async () => {
     setFaucet({ busy: true })
     try {
-      const r = await api('/faucet', { address: me.address, eth: me.id === 'dada' || !!me.injected })
+      const r = await api('/faucet', { address: me.address, eth: me.id === 'dada' || !!me.injected }, me.address)
       setFaucet({ ok: `Sent ${r.usdc} test USDC${r.eth !== '0' ? ` and ${r.eth} test ETH` : ''}.` })
       setTimeout(refresh, 2000)
     } catch (e) {

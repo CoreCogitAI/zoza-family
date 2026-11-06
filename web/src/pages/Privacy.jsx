@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { chosenNetwork, NETWORKS, onStats, setNetwork, stats as initial } from '../anon.js'
+import { chosenNetwork, LOCAL, NETWORKS, onStats, setNetwork, stats as initial } from '../anon.js'
 import { config } from '../chain.js'
 import { Addr, Callout, Icon } from '../ui.jsx'
 
@@ -7,9 +7,10 @@ export default function Privacy() {
   const [s, setS] = useState({ ...initial })
   const [net, setNet] = useState(chosenNetwork())
   useEffect(() => onStats(setS), [])
-  const t = s.totals ?? { anon: s.anon, direct: s.direct, bootstrap: s.bootstrap }
-  const total = t.anon + t.direct
-  const share = total ? Math.round((100 * t.anon) / total) : null
+  const t = { server: 0, serverDirect: 0, ...(s.totals ?? s) }
+  const priv = t.anon + t.server
+  const total = priv + t.direct + t.serverDirect
+  const share = total ? Math.round((100 * priv) / total) : null
   const avg = s.anon ? Math.round(s.totalMs / s.anon) : null
   const n = NETWORKS[s.network ?? net]
 
@@ -20,18 +21,19 @@ export default function Privacy() {
           <div className="eyebrow">Privacy</div>
           <h1>Your family's wallets stay unlinked from you</h1>
           <p className="lede">
-            A normal wallet asks a company's server about your balances, and that server sees your IP address next to every address you look up: yours, your children's, your nominee's. Zoza Family sends every one of those reads through Anon-RPC instead.
+            A normal wallet asks a company's server about your balances, and that server sees your IP address next to every address you look up: yours, your children's, your nominee's. Zoza Family sends every one of those reads through Anon-RPC instead, and its calls to its own server too.
           </p>
         </div>
       </div>
 
       <div className="grid g3">
         <div className="card">
-          <div className="stat-label">Family data reads sent privately</div>
+          <div className="stat-label">Family data sent privately</div>
           <div className="meter-big">{share == null ? '—' : `${share}%`}</div>
           <div className="small muted" style={{ marginTop: 8 }}>
-            {t.anon} through Anon-RPC · {t.direct} direct, during this visit
+            {t.anon} chain reads and {t.server} server calls through Anon-RPC · {t.direct + t.serverDirect} direct, during this visit
           </div>
+          {LOCAL && t.serverDirect > 0 && <div className="tiny muted" style={{ marginTop: 6 }}>This page runs on this computer, which a mixnet exit node cannot reach, so server calls go direct here. On the public site they go through Anon-RPC.</div>}
           <div className="tiny muted" style={{ marginTop: 6 }}>Not counted: {t.bootstrap ?? 0} bootstrap reads of the network's specifier contract, which Anon-RPC makes directly at each page load to learn which anon-client code to trust (anon-rpc §4). They carry no family addresses.</div>
         </div>
         <div className="card">
@@ -67,7 +69,7 @@ export default function Privacy() {
             <span className="arrow">→</span>
             <span className="node hide">{n?.label ?? 'Mixnet'}</span>
             <span className="arrow">→</span>
-            <span className="node">Public Sepolia RPC</span>
+            <span className="node">Public Sepolia RPC, or the Zoza Family server</span>
           </div>
           <ul className="promise-list" style={{ marginTop: 16 }}>
             <li className="y"><Icon name="check" />The anon-client's code is pinned by hash in an on-chain specifier contract and checked before it runs.</li>
@@ -111,6 +113,7 @@ export default function Privacy() {
             <h3 style={{ marginBottom: 8 }}>Hidden</h3>
             <ul className="promise-list">
               <li className="y"><Icon name="check" />From the RPC provider: which device and IP address asked about which family wallets.</li>
+              <li className="y"><Icon name="check" />From the Zoza Family server and its host: your IP next to the batches you send, your inbox, invites, gift quotes and test money. Those calls arrive from the mixnet's exit node, and each person's calls are marked as separate.</li>
               <li className="y"><Icon name="check" />From the mixnet's exit node (Nox): the content of the request, since TLS to the RPC runs inside the worker.</li>
               <li className="y"><Icon name="check" />From analytics companies: this site loads no trackers, fonts or scripts from anyone else.</li>
             </ul>
@@ -119,14 +122,15 @@ export default function Privacy() {
             <h3 style={{ marginBottom: 8 }}>Not hidden</h3>
             <ul className="promise-list">
               <li className="n"><Icon name="x" />What is on chain. Plans, wills and payments are public by nature of a blockchain.</li>
-              <li className="n"><Icon name="x" />From the Zoza Family server: the batches you ask it to relay (it pays the gas), your inbox, and gift quotes. It sees your IP for those.</li>
+              <li className="n"><Icon name="x" />From the Zoza Family server: what you ask it, such as the batches it relays and your inbox, though not from where. It does see your IP when the page itself loads, and with few visitors the timing could link the two.</li>
+              <li className="n"><Icon name="x" />With a connected wallet such as MetaMask: its own transactions and reads go to the wallet's RPC, which sees your IP. A website cannot change that; only the wallet can, by sending its own requests through Anon-RPC.</li>
               <li className="n"><Icon name="x" />From the anon-client itself: it sees every request it carries and could refuse or alter one. You trust whoever controls the specifier contract.</li>
             </ul>
           </div>
         </div>
         <div style={{ marginTop: 16 }}>
           <Callout tone="info">
-            Writes never go from this browser to an RPC. You sign here, and the relayer <Addr address={config.relayer} /> sends the transaction and pays for it.
+            A wallet made here never sends writes to an RPC. You sign here, and the relayer <Addr address={config.relayer} /> sends the transaction and pays for it. A connected wallet sends its own.
           </Callout>
         </div>
       </section>

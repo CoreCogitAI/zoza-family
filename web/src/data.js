@@ -2,6 +2,7 @@
 // through Anon-RPC, and cached so the next visit paints at once.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { isCalibur } from '../../shared/calibur.mjs'
+import { serverFetch } from './anon.js'
 import { authHeader } from './auth.js'
 import { api, client, config, savings, supplyApr, usdcOf, will } from './chain.js'
 
@@ -132,7 +133,7 @@ export function useInbox(person, every = 8000) {
     const load = async () => {
       const headers = await authHeader([person])
       if (!headers['x-zoza-auth']) return live && setItems([])
-      const res = await fetch(`/api/inbox/${address}`, { headers }).catch(() => null)
+      const res = await serverFetch(`/api/inbox/${address}`, { headers }, address).catch(() => null)
       if (res?.ok && live) setItems(await res.json())
     }
     load()

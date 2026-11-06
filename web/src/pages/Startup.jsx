@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { serverFetch } from '../anon.js'
 import { authHeader } from '../auth.js'
 import { useApp } from '../main.jsx'
 import { Callout, Empty, Icon } from '../ui.jsx'
@@ -23,8 +24,8 @@ export default function Startup() {
   const refresh = useCallback(async () => {
     const h = await headers()
     const [p, q] = await Promise.all([
-      fetch(`/api/startup/policy?owner=${me.address}`, { headers: h }),
-      fetch(`/api/startup/proposals?owner=${me.address}`, { headers: h }),
+      serverFetch(`/api/startup/policy?owner=${me.address}`, { headers: h }, me.address),
+      serverFetch(`/api/startup/proposals?owner=${me.address}`, { headers: h }, me.address),
     ])
     const pj = await p.json().catch(() => ({}))
     const qj = await q.json().catch(() => ({ proposals: [] }))
@@ -46,7 +47,7 @@ export default function Startup() {
     try {
       const h = await headers()
       const list = approvers.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean)
-      const res = await fetch(`/api/startup/policy?owner=${me.address}`, { method: 'PUT', headers: h, body: JSON.stringify({ name, keyAddress, singleLimit, dailyLimit, approvers: list, requiredApprovers: Number(requiredApprovers), active: true }) })
+      const res = await serverFetch(`/api/startup/policy?owner=${me.address}`, { method: 'PUT', headers: h, body: JSON.stringify({ name, keyAddress, singleLimit, dailyLimit, approvers: list, requiredApprovers: Number(requiredApprovers), active: true }, me.address) })
       const j = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(j.error ?? 'Could not save policy')
       await refresh()
@@ -57,7 +58,7 @@ export default function Startup() {
     setBusy(true); setError(null)
     try {
       const h = await headers()
-      const res = await fetch('/api/startup/proposals', { method: 'POST', headers: h, body: JSON.stringify({ owner: me.address, actor: me.address, recipient, amount, reason }) })
+      const res = await serverFetch('/api/startup/proposals', { method: 'POST', headers: h, body: JSON.stringify({ owner: me.address, actor: me.address, recipient, amount, reason }, me.address) })
       const j = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(j.error ?? 'Could not create proposal')
       setRecipient(''); setAmount('100'); setReason('')
@@ -69,7 +70,7 @@ export default function Startup() {
     setBusy(true); setError(null)
     try {
       const h = await headers()
-      const res = await fetch('/api/startup/proposals/decide', { method: 'POST', headers: h, body: JSON.stringify({ owner: me.address, actor: me.address, id, decision }) })
+      const res = await serverFetch('/api/startup/proposals/decide', { method: 'POST', headers: h, body: JSON.stringify({ owner: me.address, actor: me.address, id, decision }, me.address) })
       const j = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(j.error ?? 'Could not review proposal')
       await refresh()
@@ -78,7 +79,7 @@ export default function Startup() {
 
   const download = async () => {
     const h = await authHeader([me])
-    const res = await fetch(`/api/startup/audit.csv?owner=${me.address}`, { headers: h })
+    const res = await serverFetch(`/api/startup/audit.csv?owner=${me.address}`, { headers: h }, me.address)
     if (!res.ok) return
     const url = URL.createObjectURL(await res.blob())
     const a = document.createElement('a')

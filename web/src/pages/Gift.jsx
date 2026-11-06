@@ -23,7 +23,7 @@ export default function Gift({ id }) {
     setQErr(null)
     setLoading(true)
     const t = setTimeout(() => {
-      api(`/gift-quote?eth=${eth}&swapper=${me.address}`)
+      api(`/gift-quote?eth=${eth}&swapper=${me.address}`, undefined, me.address)
         .then((q) => live && setQuote(q))
         .catch((e) => live && setQErr(e.message))
         .finally(() => live && setLoading(false))

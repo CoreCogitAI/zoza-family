@@ -5,6 +5,7 @@
 import { createWalletClient, custom, getAddress } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { sepolia } from 'viem/chains'
+import { serverFetch } from './anon.js'
 import { authHeader, tokenFor } from './auth.js'
 import { providerFor } from './wallets.js'
 
@@ -161,7 +162,7 @@ export async function loadMembers() {
   const readers = build().filter((p) => p.signer)
   try {
     const headers = await authHeader(readers)
-    const res = readers.length ? await fetch(`/api/invites?from=${readers.map((p) => p.address).join(',')}`, { headers }) : null
+    const res = readers.length ? await serverFetch(`/api/invites?from=${readers.map((p) => p.address).join(',')}`, { headers }) : null
     const list = res?.ok ? await res.json() : []
     members = list
       .filter((i) => i.acceptedBy)

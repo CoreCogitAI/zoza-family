@@ -1,5 +1,6 @@
-// Every chain read goes through Anon-RPC (a mixnet by default), so the RPC
-// never sees this device's IP next to the family's wallets.
+// Every chain read and every call to the Zoza Family server goes through
+// Anon-RPC (a mixnet by default), so neither sees this device's IP next to
+// the family's wallets.
 import { AnonRpcWorker } from '@anon-rpc/browser-harness'
 
 // Specifier contracts from ethereum.github.io/anon-rpc/adopters.
@@ -42,17 +43,20 @@ export const stats = {
   readyAt: null,
   anon: 0, // data reads through Anon-RPC
   direct: 0, // data reads sent directly (direct mode only)
+  server: 0, // calls to the Zoza Family server through Anon-RPC
+  serverDirect: 0, // calls to the server sent directly (direct mode, or this computer)
   bootstrap: 0, // specifier reads Anon-RPC needs before it starts; no family data
   failed: 0,
   totalMs: 0,
   lastMs: null,
 }
+const ZERO = { anon: 0, direct: 0, server: 0, serverDirect: 0, bootstrap: 0 }
 // Running totals across page loads, so the share reflects the whole visit.
 export const totals = (() => {
   try {
-    return { anon: 0, direct: 0, bootstrap: 0, ...JSON.parse(sessionStorage.getItem('zf.anonTotals') ?? '{}') }
+    return { ...ZERO, ...JSON.parse(sessionStorage.getItem('zf.anonTotals') ?? '{}') }
   } catch {
-    return { anon: 0, direct: 0, bootstrap: 0 }
+    return { ...ZERO }
   }
 })()
 const listeners = new Set()
@@ -64,10 +68,14 @@ const emit = () => {
   listeners.forEach((fn) => fn({ ...stats, totals: { ...totals } }))
 }
 
-async function directRpc(url, method, params, kind = 'direct') {
+const count = (kind) => {
   stats[kind]++
   totals[kind]++
   emit()
+}
+
+async function directRpc(url, method, params, kind = 'direct') {
+  count(kind)
   const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) })
   const json = await res.json()
   if (json.error) throw Object.assign(new Error(json.error.message), { code: json.error.code, data: json.error.data })
@@ -123,6 +131,21 @@ export function start(network = chosenNetwork()) {
   )
 }
 
+// Nox at times has no exit node, or no tunnel opens. A read is safe to repeat;
+// a server call is repeated only when it never left this browser.
+const NO_EXIT = /NoTunnelExit|No exit|TunnelOpenTimeout/
+const WAITS = [1500, 3000, 5000, 8000, 12000]
+async function retry(send, anyError) {
+  for (let i = 0; ; i++) {
+    try {
+      return await send()
+    } catch (e) {
+      if (i === WAITS.length || !(anyError || NO_EXIT.test(String(e?.message ?? e)))) throw e
+      await new Promise((r) => setTimeout(r, WAITS[i]))
+    }
+  }
+}
+
 /// An EIP-1193 provider for viem's `custom` transport.
 export function provider(rpcUrl) {
   return {
@@ -131,12 +154,14 @@ export function provider(rpcUrl) {
       if (current === 'direct') return directRpc(rpcUrl, method, params)
       const t0 = performance.now()
       try {
-        const res = await worker.fetch(rpcUrl, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
-        })
-        const json = await res.json()
+        const json = await retry(async () => {
+          const res = await worker.fetch(rpcUrl, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+          })
+          return res.json()
+        }, true)
         stats.anon++
         totals.anon++
         stats.lastMs = Math.round(performance.now() - t0)
@@ -152,5 +177,30 @@ export function provider(rpcUrl) {
         throw e
       }
     },
+  }
+}
+
+// An exit node cannot reach a server on this computer.
+export const LOCAL = /^(localhost|127(\.\d+){3}|\[::1\])$|\.localhost$/.test(location.hostname)
+
+/// fetch() for the Zoza Family server, through the same network as the reads.
+/// The server still sees what is asked, but not from which IP. `who` asks the
+/// network not to link one person's calls with another's (anon-rpc §9.3).
+export async function serverFetch(path, init = {}, who) {
+  if (!current) start()
+  if (current === 'direct' || LOCAL) {
+    count('serverDirect')
+    return fetch(path, init)
+  }
+  const anonOptions = who ? { isolationKey: who.toLowerCase() } : undefined
+  try {
+    const res = await retry(() => worker.fetch(new URL(path, location.origin).href, { ...init, ...(anonOptions && { anonOptions }) }), false)
+    count('server')
+    return res
+  } catch (e) {
+    stats.failed++
+    emit()
+    if (NO_EXIT.test(String(e?.message ?? e))) throw new Error('The Nox mixnet could not connect, so nothing was sent. Try again in a minute, or choose another network on the Privacy page.')
+    throw e
   }
 }

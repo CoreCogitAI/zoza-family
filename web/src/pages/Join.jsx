@@ -3,6 +3,7 @@ import { createWalletClient, custom, getAddress } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { sepolia } from 'viem/chains'
 import { acceptMessage } from '../../../shared/invites.mjs'
+import { serverFetch } from '../anon.js'
 import { tokenFor } from '../auth.js'
 import { family, loadMembers, loadSelf, saveSelf } from '../family.js'
 import { go, useApp } from '../main.jsx'
@@ -29,14 +30,14 @@ export default function Join({ code }) {
   const mine = loadSelf()
 
   useEffect(() => {
-    fetch(`/api/invites/${code}`)
+    serverFetch(`/api/invites/${code}`)
       .then((r) => r.json().then((j) => (r.ok ? setInv(j) : setErr(j.error))))
       .catch((e) => setErr(e.message))
   }, [code])
 
   const finish = async (kind, address, sign, key) => {
     const signature = await sign(acceptMessage(inv))
-    const res = await fetch(`/api/invites/${code}/accept`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ address, signature }) })
+    const res = await serverFetch(`/api/invites/${code}/accept`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ address, signature }) }, address)
     const j = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error(j.error ?? `error ${res.status}`)
     saveSelf({ kind, address, key, name: inv.name, role: inv.role, inviter: { address: inv.from, name: inv.fromName } })
