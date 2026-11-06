@@ -4,7 +4,7 @@ import { usePerson } from '../data.js'
 import { inviteMessage, ROLES } from '../../../shared/invites.mjs'
 import { serverFetch } from '../anon.js'
 import { authHeader, tokenFor } from '../auth.js'
-import { byAddress, family, loadMembers, loadSelf, nameOf, saveSelf } from '../family.js'
+import { byAddress, family, loadMembers, loadSelf, nameOf, removeInvite, saveSelf } from '../family.js'
 import { go, useApp } from '../main.jsx'
 import { Addr, Callout, Empty, Face, Icon, rel, Skel, Tip, useNow } from '../ui.jsx'
 
@@ -140,7 +140,24 @@ function InviteCard({ me }) {
   const [role, setRole] = useState('heir')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
-  const [sent, setSent] = useState([])
+  // Kept per person, so the list does not vanish while a private read is slow.
+  const sentKey = `zf.sent.${me.address.toLowerCase()}`
+  const [sent, setSentState] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(sentKey) ?? '[]')
+    } catch {
+      return []
+    }
+  })
+  const setSent = (f) =>
+    setSentState((old) => {
+      const next = typeof f === 'function' ? f(old) : f
+      try {
+        localStorage.setItem(sentKey, JSON.stringify(next))
+      } catch {}
+      return next
+    })
+  const [loadErr, setLoadErr] = useState(null)
   const [copied, setCopied] = useState(null)
   // A connected wallet reads its sent invites only after signing a read pass.
   const [locked, setLocked] = useState(false)
@@ -154,15 +171,19 @@ function InviteCard({ me }) {
     try {
       const res = await serverFetch(`/api/invites?from=${me.address}`, { headers: await authHeader([me]) }, me.address)
       setLocked(res.status === 401)
+      setLoadErr(null)
       if (!res.ok) return
       const list = (await res.json()).filter((i) => i.from.toLowerCase() === me.address.toLowerCase())
-      // Keep links made here even if a slow read has not listed them yet.
-      setSent((old) => [...list, ...old.filter((o) => !list.some((i) => i.code === o.code))].sort((a, b) => b.at - a.at))
+      // The server's list is the truth; a link made in the last minute may not be in it yet.
+      const recent = Date.now() - 60_000
+      setSent((old) => [...list, ...old.filter((o) => o.at > recent && !list.some((i) => i.code === o.code))].sort((a, b) => b.at - a.at))
       if (list.some((i) => i.acceptedBy && !byAddress(i.acceptedBy))) {
         await loadMembers()
         rerender()
       }
-    } catch {}
+    } catch (e) {
+      setLoadErr(e.message)
+    }
   }, [me.address, rerender])
   useEffect(() => {
     load()
@@ -220,6 +241,20 @@ function InviteCard({ me }) {
       setStep(null)
     }
   }
+  const remove = async (i) => {
+    if (!confirm(i.acceptedBy ? `Remove ${i.name} from your family list? Plans or a will that already name them do not change.` : `Cancel the invite for ${i.name}? The link stops working.`)) return
+    setErr(null)
+    setStep(i.acceptedBy ? `Sign to remove ${i.name}.` : `Sign to cancel the invite for ${i.name}.`)
+    try {
+      await removeInvite(me, i)
+      setSent((old) => old.filter((o) => o.code !== i.code))
+      rerender()
+    } catch (e) {
+      setErr(e.shortMessage ?? e.message)
+    } finally {
+      setStep(null)
+    }
+  }
   const link = (c) => `${location.origin}/#/join/${c}`
   const copy = (c) => navigator.clipboard?.writeText(link(c)).then(() => (setCopied(c), setTimeout(() => setCopied(null), 1500))).catch(() => {})
 
@@ -247,6 +282,7 @@ function InviteCard({ me }) {
           </Callout>
         )}
         {err && <div className="tiny bad">{err}</div>}
+        {loadErr && <div className="tiny muted">Could not load your invites just now ({loadErr}). Trying again every 10 s.</div>}
         {locked && !busy && !step && (
           <Callout tone="warn">
             You have not let this browser read your family list yet, so people who joined do not show.
@@ -261,18 +297,23 @@ function InviteCard({ me }) {
       {sent.some((i) => !i.acceptedBy) && <p className="tiny muted" style={{ marginTop: 14 }}>Send each link to the person yourself, by WhatsApp or any chat. They join by opening it.</p>}
       {sent.length > 0 && (
         <div className="stack-sm" style={{ marginTop: 10 }}>
-          {sent.slice(0, 6).map((i) => (
+          {sent.map((i) => (
             <div key={i.code} className="between small" style={{ gap: 8 }}>
               <span>
                 {i.name} <span className="muted">· {ROLES[i.role]}</span>
               </span>
-              {i.acceptedBy ? (
-                <span className="badge ok">Joined</span>
-              ) : (
-                <button className="btn ghost small" onClick={() => copy(i.code)} title={link(i.code)}>
-                  <Icon name="copy" /> {copied === i.code ? 'Copied' : 'Copy link'}
+              <span className="row" style={{ gap: 4 }}>
+                {i.acceptedBy ? (
+                  <span className="badge ok">Joined</span>
+                ) : (
+                  <button className="btn ghost small" onClick={() => copy(i.code)} title={link(i.code)}>
+                    <Icon name="copy" /> {copied === i.code ? 'Copied' : 'Copy link'}
+                  </button>
+                )}
+                <button className="btn ghost small" onClick={() => remove(i)} aria-label={i.acceptedBy ? `Remove ${i.name}` : `Cancel the invite for ${i.name}`} title={i.acceptedBy ? 'Remove from your family' : 'Cancel this invite'}>
+                  <Icon name="x" />
                 </button>
-              )}
+              </span>
             </div>
           ))}
         </div>
@@ -301,7 +342,7 @@ function JoinCard() {
 }
 
 export default function Family() {
-  const { me, send } = useApp()
+  const { me, send, rerender } = useApp()
   const { data, error, refresh } = usePerson(me.address)
   const now = useNow()
   const [faucet, setFaucet] = useState(null)
@@ -485,14 +526,38 @@ export default function Family() {
           <div className="card">
             <h3 style={{ marginBottom: 10 }}>Your family</h3>
             <div className="stack-sm">
-              {others.map((p) => (
-                <div key={p.id} className="row" style={{ gap: 10 }}>
-                  <Face person={p} size="sm" />
-                  <div className="small">
-                    {p.name} <span className="muted">· {p.role}</span>
+              {others.map((p) => {
+                const mineToEdit = p.invite && [p.invite.from, p.invite.acceptedBy].some((a) => a?.toLowerCase() === me.address.toLowerCase())
+                const leaving = p.invite?.acceptedBy?.toLowerCase() === me.address.toLowerCase()
+                return (
+                  <div key={p.id} className="between" style={{ gap: 10 }}>
+                    <div className="row" style={{ gap: 10 }}>
+                      <Face person={p} size="sm" />
+                      <div className="small">
+                        {p.name} <span className="muted">· {p.role}</span>
+                      </div>
+                    </div>
+                    {mineToEdit && (
+                      <button
+                        className="btn ghost small"
+                        title={leaving ? `Leave ${p.name}'s family` : `Remove ${p.name}`}
+                        aria-label={leaving ? `Leave ${p.name}'s family` : `Remove ${p.name}`}
+                        onClick={async () => {
+                          if (!confirm(leaving ? `Leave ${p.name}'s family list? Plans or a will that already name you do not change.` : `Remove ${p.name} from your family list? Plans or a will that already name them do not change.`)) return
+                          try {
+                            await removeInvite(me, p.invite)
+                            rerender()
+                          } catch (e) {
+                            alert(e.shortMessage ?? e.message)
+                          }
+                        }}
+                      >
+                        <Icon name="x" /> {leaving ? 'Leave' : 'Remove'}
+                      </button>
+                    )}
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
             {others.length === 0 && <p className="small muted">No one yet. Invite them above.</p>}
             {me.persona && <p className="tiny muted" style={{ marginTop: 12 }}>Switch person at the top right to see Zoza Family from their side.</p>}

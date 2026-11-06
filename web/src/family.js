@@ -5,6 +5,7 @@
 import { createWalletClient, custom, getAddress } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { sepolia } from 'viem/chains'
+import { removeMessage } from '../../shared/invites.mjs'
 import { serverFetch } from './anon.js'
 import { authHeader, tokenFor } from './auth.js'
 import { providerFor } from './wallets.js'
@@ -196,6 +197,19 @@ export function watchWallet(onChange) {
   return () => p.removeListener?.('accountsChanged', handler)
 }
 
+/// Cancel or remove an invite you sent, or leave a family you joined. Plans and
+/// wills already naming the wallet are not changed; this only edits the list.
+export async function removeInvite(person, invite) {
+  const signature = await person.signer.signMessage({ message: removeMessage(invite) })
+  const res = await serverFetch(`/api/invites/${invite.code}/remove`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ address: person.address, signature }) }, person.address)
+  const j = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(j.error ?? `error ${res.status}`)
+  const s = loadSelf()
+  if (s?.inviter && s.inviter.address.toLowerCase() === invite.from.toLowerCase() && person.id === 'self') saveSelf({ ...s, inviter: null })
+  members = members.filter((m) => m.invite?.code !== invite.code)
+  return loadMembers()
+}
+
 /// People this browser's people invited who accepted, so plans and wills can name them.
 export async function loadMembers() {
   const s = loadSelf()
@@ -207,13 +221,23 @@ export async function loadMembers() {
     if (res && !res.ok) return family
     const list = res ? await res.json() : []
     const mine = new Set(readers.map((p) => p.address.toLowerCase()))
+    // A browser that lost this person's name or inviter gets them back from the invites.
+    if (s) {
+      const me = s.address.toLowerCase()
+      const sentByMe = list.filter((i) => i.from.toLowerCase() === me && i.fromName && i.fromName !== 'You').sort((a, b) => b.at - a.at)[0]
+      const joined = list.find((i) => i.acceptedBy?.toLowerCase() === me)
+      const fix = {}
+      if ((!s.name || s.name === 'You') && (sentByMe || joined)) fix.name = sentByMe?.fromName ?? joined.name
+      if (!s.inviter && joined) Object.assign(fix, { inviter: { address: joined.from, name: joined.fromName }, role: joined.role })
+      if (Object.keys(fix).length) saveSelf({ ...s, ...fix })
+    }
     // Invites these people accepted: the inviter is family too.
     const inviters = list
       .filter((i) => mine.has(i.acceptedBy?.toLowerCase()) && !mine.has(i.from.toLowerCase()))
-      .map((i) => ({ id: `m-${i.from.toLowerCase()}`, name: i.fromName, role: 'Invited you', about: 'Invited you to their family', tone: toneOf(i.from), address: i.from, signer: null }))
+      .map((i) => ({ id: `m-${i.from.toLowerCase()}`, name: i.fromName, role: 'Invited you', about: 'Invited you to their family', tone: toneOf(i.from), address: i.from, signer: null, invite: i }))
     members = list
       .filter((i) => i.acceptedBy && mine.has(i.from.toLowerCase()))
-      .map((i) => ({ id: `m-${i.acceptedBy.toLowerCase()}`, name: i.name, role: `${i.fromName}'s ${i.role === 'family' ? 'family' : i.role}`, about: 'Joined with their own wallet', tone: toneOf(i.acceptedBy), address: i.acceptedBy, signer: null }))
+      .map((i) => ({ id: `m-${i.acceptedBy.toLowerCase()}`, name: i.name, role: `${i.fromName}'s ${i.role === 'family' ? 'family' : i.role}`, about: 'Joined with their own wallet', tone: toneOf(i.acceptedBy), address: i.acceptedBy, signer: null, invite: i }))
     members.push(...inviters)
     if (s?.inviter) members.push({ id: `m-${s.inviter.address.toLowerCase()}`, name: s.inviter.name, role: 'Invited you', about: 'Invited you to their family', tone: toneOf(s.inviter.address), address: s.inviter.address, signer: null })
     set(membersKey(), JSON.stringify(members))

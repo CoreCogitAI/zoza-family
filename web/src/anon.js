@@ -186,21 +186,38 @@ export const LOCAL = /^(localhost|127(\.\d+){3}|\[::1\])$|\.localhost$/.test(loc
 /// fetch() for the Zoza Family server, through the same network as the reads.
 /// The server still sees what is asked, but not from which IP. `who` asks the
 /// network not to link one person's calls with another's (anon-rpc §9.3).
+// An answer that never comes back must not leave the page waiting forever.
+const ANSWER_MS = 25_000
+let late = 0
+function inTime(p) {
+  return Promise.race([p, new Promise((_, no) => setTimeout(() => no(new Error('NoAnswer')), ANSWER_MS))]).then(
+    (r) => ((late = 0), r),
+    (e) => {
+      // Twice without an answer: start a fresh worker, in case this one is stuck.
+      if (e.message === 'NoAnswer' && ++late >= 2) (late = 0), start(current)
+      throw e
+    },
+  )
+}
+
 export async function serverFetch(path, init = {}, who) {
   if (!current) start()
+  const safe = !init.method || init.method === 'GET'
   if (current === 'direct' || LOCAL) {
     count('serverDirect')
     return fetch(path, init)
   }
   const anonOptions = who ? { isolationKey: who.toLowerCase() } : undefined
   try {
-    const res = await retry(() => worker.fetch(new URL(path, location.origin).href, { ...init, ...(anonOptions && { anonOptions }) }), false)
+    // A read is safe to repeat on any error; a write only when it never left.
+    const res = await retry(() => inTime(worker.fetch(new URL(path, location.origin).href, { ...init, ...(anonOptions && { anonOptions }) })), safe)
     count('server')
     return res
   } catch (e) {
     stats.failed++
     emit()
     if (NO_EXIT.test(String(e?.message ?? e))) throw new Error('The Nox mixnet could not connect, so nothing was sent. Try again in a minute, or choose another network on the Privacy page.')
+    if (e?.message === 'NoAnswer') throw new Error(safe ? 'No answer through the Nox mixnet. Try again in a minute, or choose another network on the Privacy page.' : 'No answer through the Nox mixnet in 25 s. It may still have reached the server, so reload and check before trying again.')
     throw e
   }
 }
