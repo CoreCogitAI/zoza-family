@@ -1,0 +1,243 @@
+import { createContext, StrictMode, useCallback, useContext, useEffect, useRef, useState } from 'react'
+import { createRoot } from 'react-dom/client'
+import { onStats, start as startAnon, stats as anonStats } from './anon.js'
+import { loadConfig, sendBatch } from './chain.js'
+import { choose, current, family } from './family.js'
+import { useInbox } from './data.js'
+import { Face, Icon, Modal, rel, SendSteps, useNow } from './ui.jsx'
+import Home from './pages/Home.jsx'
+import Family from './pages/Family.jsx'
+import PlanNew from './pages/PlanNew.jsx'
+import Plan from './pages/Plan.jsx'
+import Will from './pages/Will.jsx'
+import Gift from './pages/Gift.jsx'
+import Privacy from './pages/Privacy.jsx'
+import How from './pages/How.jsx'
+import './styles.css'
+
+const Ctx = createContext(null)
+export const useApp = () => useContext(Ctx)
+
+function useHash() {
+  const [hash, setHash] = useState(() => location.hash.slice(1) || '/')
+  useEffect(() => {
+    const on = () => {
+      setHash(location.hash.slice(1) || '/')
+      window.scrollTo(0, 0)
+    }
+    window.addEventListener('hashchange', on)
+    return () => window.removeEventListener('hashchange', on)
+  }, [])
+  return hash
+}
+
+export const go = (path) => (location.hash = path)
+
+function useAnon() {
+  const [s, setS] = useState({ ...anonStats })
+  useEffect(() => onStats(setS), [])
+  return s
+}
+
+/// Run a batch with the three-step dialog: sign here, relayer sends, confirmed.
+function useSender() {
+  const [job, setJob] = useState(null)
+  const run = useCallback(async ({ title, signer, account, calls, after }) => {
+    setJob({ title, step: 'sign' })
+    try {
+      const result = await sendBatch({ signer, account, calls, onStep: (step) => setJob((j) => ({ ...j, step })) })
+      setJob((j) => ({ ...j, step: 'done', result }))
+      after?.(result)
+      return result
+    } catch (e) {
+      setJob((j) => ({ ...j, error: e.message ?? String(e) }))
+      return null
+    }
+  }, [])
+  const dialog = (
+    <Modal open={!!job} title={job?.title} onClose={() => (job?.step === 'done' || job?.error) && setJob(null)}>
+      {job && <SendSteps step={job.step} result={job.result} error={job.error} />}
+      {(job?.step === 'done' || job?.error) && (
+        <div className="row" style={{ justifyContent: 'flex-end', marginTop: 16 }}>
+          <button className="btn primary" onClick={() => setJob(null)}>
+            {job.error ? 'Close' : 'Done'}
+          </button>
+        </div>
+      )}
+    </Modal>
+  )
+  return { run, dialog }
+}
+
+function PersonSwitcher({ me, setMe }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  useEffect(() => {
+    const off = (e) => ref.current && !ref.current.contains(e.target) && setOpen(false)
+    document.addEventListener('mousedown', off)
+    return () => document.removeEventListener('mousedown', off)
+  }, [])
+  return (
+    <div className="rel" ref={ref}>
+      <button className="me-btn" onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}>
+        <Face person={me} />
+        <span>
+          {me.name} <span className="role">· {me.role}</span>
+        </span>
+      </button>
+      {open && (
+        <div className="pop" role="menu">
+          <div className="pop-head">Demo family. Each person has their own wallet on this device.</div>
+          {family.map((p) => (
+            <button key={p.id} className="person" role="menuitem" aria-current={p.id === me.id} onClick={() => (setMe(p.id), setOpen(false))}>
+              <Face person={p} />
+              <span>
+                {p.name} · {p.role}
+                <small>{p.about}</small>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Inbox({ me }) {
+  const items = useInbox(me.address)
+  const now = useNow(10_000)
+  const [open, setOpen] = useState(false)
+  const [seen, setSeen] = useState(() => Number(localStorage.getItem(`zf.seen.${me.id}`) ?? 0))
+  useEffect(() => setSeen(Number(localStorage.getItem(`zf.seen.${me.id}`) ?? 0)), [me.id])
+  const unread = items.filter((m) => m.at > seen).length
+  const ref = useRef(null)
+  useEffect(() => {
+    const off = (e) => ref.current && !ref.current.contains(e.target) && setOpen(false)
+    document.addEventListener('mousedown', off)
+    return () => document.removeEventListener('mousedown', off)
+  }, [])
+  const toggle = () => {
+    setOpen((o) => !o)
+    const t = Date.now()
+    localStorage.setItem(`zf.seen.${me.id}`, String(t))
+    setSeen(t)
+  }
+  return (
+    <div className="rel bell" ref={ref}>
+      <button className="btn ghost small" onClick={toggle} aria-label={`Messages, ${unread} new`}>
+        <Icon name="bell" />
+      </button>
+      {unread > 0 && <span className="count">{unread}</span>}
+      {open && (
+        <div className="pop inbox">
+          <div className="pop-head">Messages for {me.name}</div>
+          {items.length === 0 && <p className="muted small" style={{ padding: '4px 12px 12px' }}>Nothing yet. The watcher writes here when something happens to a plan or a will.</p>}
+          {items.map((m) => (
+            <div className="msg" key={m.id}>
+              <b>{m.title}</b>
+              <p>{m.body}</p>
+              <time>{rel(Math.floor(m.at / 1000), now)}{m.via === 'cre' ? ' · via Chainlink CRE' : ''}</time>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PrivChip() {
+  const s = useAnon()
+  const label = s.network === 'direct' ? 'Reads not private' : s.state === 'ready' ? 'Private reads' : s.state === 'failed' ? 'Privacy network down' : 'Connecting privately…'
+  return (
+    <a href="#/privacy" className={`privchip ${s.network === 'direct' ? 'direct' : s.state}`} title="Every blockchain read goes through Anon-RPC">
+      <span className="dot" /> <span className="txt">{label}</span>
+    </a>
+  )
+}
+
+const NAV = [
+  ['/family', 'My family'],
+  ['/will', 'Will'],
+  ['/privacy', 'Privacy'],
+  ['/how', 'How it works'],
+]
+
+function App() {
+  const hash = useHash()
+  const [cfg, setCfg] = useState(null)
+  const [err, setErr] = useState(null)
+  const [meId, setMeId] = useState(() => current().id)
+  const me = family.find((p) => p.id === meId) ?? family[0]
+  const sender = useSender()
+  const [, bump] = useState(0)
+
+  useEffect(() => {
+    startAnon()
+    loadConfig().then(setCfg, (e) => setErr(e.message))
+  }, [])
+  const setMe = (id) => {
+    choose(id)
+    setMeId(id)
+  }
+
+  if (err) return <main><div className="callout bad">Could not reach the Zoza Family server: {err}</div></main>
+  if (!cfg) return <main><span className="spinner" /> Loading…</main>
+
+  const [, page, arg] = hash.split('/')
+  let body
+  if (!page) body = <Home />
+  else if (page === 'family') body = <Family key={me.id} />
+  else if (page === 'plan' && arg === 'new') body = <PlanNew key={me.id} />
+  else if (page === 'plan') body = <Plan id={Number(arg)} key={`${me.id}-${arg}`} />
+  else if (page === 'will') body = <Will key={me.id} edit={arg === 'edit'} />
+  else if (page === 'gift') body = <Gift id={Number(arg)} key={`${me.id}-${arg}`} />
+  else if (page === 'privacy') body = <Privacy />
+  else if (page === 'how') body = <How />
+  else body = <Home />
+
+  return (
+    <Ctx.Provider value={{ me, setMe, config: cfg, send: sender.run, rerender: () => bump((x) => x + 1) }}>
+      <div className="strip">
+        <b>Test network.</b> Ethereum Sepolia with test money only. Each family member's wallet key is made and kept in this browser.
+      </div>
+      <header className="top">
+        <div className="top-in">
+          <a href="#/" className="brand">
+            <span className="brand-mark">Z</span>
+            <span className="brand-word">
+              Zoza <b>Family</b>
+            </span>
+          </a>
+          <nav className="nav">
+            {NAV.map(([href, label]) => (
+              <a key={href} href={`#${href}`} className={hash.startsWith(href) ? 'on' : ''}>
+                {label}
+              </a>
+            ))}
+          </nav>
+          <div className="who">
+            <PrivChip />
+            <Inbox me={me} key={me.id} />
+            <PersonSwitcher me={me} setMe={setMe} />
+          </div>
+        </div>
+      </header>
+      <main>{body}</main>
+      <footer className="footer">
+        <div className="footer-in">
+          <span>Zoza Family · a will, savings plans and a nominee, inside your own wallet. Open source, MIT.</span>
+          <span>
+            Not a bank deposit or insurance. Interest is variable. <a href="#/how">How it works</a>
+          </span>
+        </div>
+      </footer>
+      {sender.dialog}
+    </Ctx.Provider>
+  )
+}
+
+createRoot(document.getElementById('root')).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+)

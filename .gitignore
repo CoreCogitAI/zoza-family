@@ -10,3 +10,4 @@ server/data/
 .server.pid
 .server.log
 .e2e.log
+.tunnel.log
