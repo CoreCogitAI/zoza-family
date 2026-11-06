@@ -98,7 +98,7 @@ async function watchPlans(now) {
     }
     p = await savings('planOf', [BigInt(id)])
     const book = await savings('passbookOf', [BigInt(id)])
-    const prev = db.seen.plans[id] ?? { entries: book.length, closed: p.closed, fresh: true }
+    const prev = db.seen.plans[id] ?? { entries: book.length, closed: p.closed, nominee: p.nominee, fresh: true }
     for (const e of book.slice(prev.fresh ? book.length : prev.entries)) {
       const kind = KINDS[e.kind]
       if (kind === 'Missed') notify([p.parent], { kind: 'plan', plan: id, title: `${p.name}: instalment missed`, body: `We could not collect ${usd(e.amount)}. No penalty. Add money and it will be collected next time, or top up now.` })
@@ -108,7 +108,10 @@ async function watchPlans(now) {
     if (p.closed && !prev.closed) {
       notify([p.child, p.parent, p.nominee], { kind: 'plan', plan: id, title: `${p.name} has matured`, body: `The savings, with any interest, went to ${short(p.child)}.` })
     }
-    db.seen.plans[id] = { entries: book.length, closed: p.closed }
+    if (prev.nominee && prev.nominee !== p.nominee) {
+      notify([prev.nominee, p.nominee, p.child], { kind: 'plan', plan: id, title: `${p.name}: new nominee`, body: `${short(p.parent)} made ${short(p.nominee)} the nominee instead of ${short(prev.nominee)}. The plan cannot be closed early for one period.` })
+    }
+    db.seen.plans[id] = { entries: book.length, closed: p.closed, nominee: p.nominee }
   }
   save()
 }
@@ -133,6 +136,12 @@ export async function tick() {
 }
 
 export function start() {
+  // Plan ids restart at 0 on a new FamilySavings, so forget what was seen on the old one.
+  if (db.seenSavings !== deployment.savings) {
+    db.seen.plans = {}
+    db.seenSavings = deployment.savings
+    save()
+  }
   let running = false
   const loop = async () => {
     if (running) return

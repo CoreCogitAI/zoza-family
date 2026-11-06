@@ -10,6 +10,7 @@ import {IComet} from "../src/interfaces/IComet.sol";
 /// Deploys FamilyWill, FamilySavings and FamilyWatcher.
 ///   COMET      the Compound III market whose base token plans save in
 ///   FORWARDER  Chainlink's (Mock)KeystoneForwarder allowed to send reports
+///   WILL       optional: keep this FamilyWill (and its wills), with WILL_BLOCK
 contract Deploy is Script {
     // forge sends CREATE2 deployments through this factory.
     address constant FACTORY = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
@@ -20,26 +21,18 @@ contract Deploy is Script {
         IComet comet = IComet(vm.envAddress("COMET"));
         address forwarder = vm.envAddress("FORWARDER");
 
-        // Calibur reads a hook's permissions from the low bits of its address.
-        bytes32 initHash = keccak256(type(FamilyWill).creationCode);
-        bytes32 salt;
-        address predicted;
-        for (uint256 i;; i++) {
-            salt = keccak256(abi.encode("zoza.family.will", i));
-            predicted = vm.computeCreate2Address(salt, initHash, FACTORY);
-            if (uint160(predicted) & FLAGS_MASK == BEFORE_EXECUTE && predicted.code.length == 0) break;
-        }
+        FamilyWill will = FamilyWill(vm.envOr("WILL", address(0)));
+        uint256 since = vm.envOr("WILL_BLOCK", block.number);
 
         vm.startBroadcast();
-        FamilyWill will = new FamilyWill{salt: salt}();
+        if (address(will) == address(0)) will = _deployWill();
         FamilySavings savings = new FamilySavings(comet);
         FamilyWatcher watcher = new FamilyWatcher(forwarder, will, savings);
         vm.stopBroadcast();
-        require(address(will) == predicted, "will address");
 
         string memory o = "deployment";
         vm.serializeUint(o, "chainId", block.chainid);
-        vm.serializeUint(o, "block", block.number);
+        vm.serializeUint(o, "block", since); // where the watcher starts reading WillMade logs
         vm.serializeAddress(o, "will", address(will));
         vm.serializeAddress(o, "savings", address(savings));
         vm.serializeAddress(o, "watcher", address(watcher));
@@ -50,5 +43,19 @@ contract Deploy is Script {
         console.log("will", address(will));
         console.log("savings", address(savings));
         console.log("watcher", address(watcher));
+    }
+
+    // Calibur reads a hook's permissions from the low bits of its address.
+    function _deployWill() internal returns (FamilyWill will) {
+        bytes32 initHash = keccak256(type(FamilyWill).creationCode);
+        bytes32 salt;
+        address predicted;
+        for (uint256 i;; i++) {
+            salt = keccak256(abi.encode("zoza.family.will", i));
+            predicted = vm.computeCreate2Address(salt, initHash, FACTORY);
+            if (uint160(predicted) & FLAGS_MASK == BEFORE_EXECUTE && predicted.code.length == 0) break;
+        }
+        will = new FamilyWill{salt: salt}();
+        require(address(will) == predicted, "will address");
     }
 }

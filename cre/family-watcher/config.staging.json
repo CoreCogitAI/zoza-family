@@ -1,9 +1,9 @@
 {
   "schedule": "0 */1 * * * *",
   "chainName": "ethereum-testnet-sepolia",
-  "savings": "0xea71f6e8858Bb0ce0A0B12EDAAD6Dc919ab9E4c4",
+  "savings": "0x399146CEA8Bd31776f013f10817a79284767d6f8",
   "will": "0xFe3ceec6A5006660F9770D5cE99D1314556F3E28",
-  "watcher": "0x2B632CF1141093C420Ec4384a4cdf1a04c27c200",
+  "watcher": "0xC966157A4D051EE5A8Ed0d17e58004682BF37cf6",
   "notifyUrl": "http://127.0.0.1:8790/api/notify",
   "ownersUrl": "http://127.0.0.1:8790/api/owners",
   "gasLimit": "3000000"

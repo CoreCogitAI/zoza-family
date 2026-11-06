@@ -33,7 +33,7 @@ type Config = {
 const SAVINGS = parseAbi([
   "function planCount() view returns (uint256)",
   "function canCollect(uint256 id) view returns (bool)",
-  "function planOf(uint256 id) view returns ((address parent, address child, address nominee, uint128 instalment, uint32 period, bool earn, bool mandateOn, bool closed, bool nomineeAgreesToClose, uint64 nextDue, uint64 maturity, uint64 createdAt, uint32 paidCount, uint32 missedCount, uint256 units, uint256 paidIn, string name))",
+  "function planOf(uint256 id) view returns ((address parent, address child, address nominee, uint128 instalment, uint32 period, bool earn, bool mandateOn, bool closed, bool nomineeAgreesToClose, uint64 nextDue, uint64 maturity, uint64 createdAt, uint64 nomineeSince, uint32 paidCount, uint32 missedCount, uint256 units, uint256 paidIn, string name))",
 ])
 const WILL = parseAbi([
   "function stateOf(address owner) view returns (uint8)",
