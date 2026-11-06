@@ -4,10 +4,13 @@ pragma solidity ^0.8.30;
 import {CaliburKeys, ICalibur, IExecutionHook} from "./interfaces/ICalibur.sol";
 import {IERC20} from "./interfaces/IERC20.sol";
 
-/// A will inside the owner's Calibur (EIP-7702) wallet.
-/// Each heir is a non-admin key guarded by this hook. It can do nothing until
-/// the owner is silent for `silence` and nobody cancels within `window`; then
-/// it can only send its own heir that heir's share of each listed token.
+/// A will for a wallet, in one of two forms.
+/// - Inside a Calibur (EIP-7702) wallet: each heir is a non-admin key guarded
+///   by this hook, and it can only send its own heir that heir's share.
+/// - For any other wallet (MetaMask, a hardware wallet): the owner gives this
+///   contract an ERC-20 allowance, and each heir pulls their share with `take`.
+/// Either way nothing can move until the owner is silent for `silence` and
+/// nobody cancels within `window`, and each heir gets only their own share.
 /// Deploy at an address whose low five bits are 01000 (BEFORE_EXECUTE only).
 contract FamilyWill is IExecutionHook {
     uint16 public constant ALL = 10_000; // shares are in basis points
@@ -24,6 +27,7 @@ contract FamilyWill is IExecutionHook {
         address[] heirs;
         uint16[] shares;
         address[] tokens;
+        bool pull; // heirs pull through an allowance instead of using Calibur keys
     }
 
     enum State {
@@ -69,6 +73,8 @@ contract FamilyWill is IExecutionHook {
     error NotYourAddress();
     error TokenNotInWill();
     error MoreThanShare(uint256 left);
+    error NotAnAllowanceWill();
+    error TransferFailed();
 
     // ------------------------------------------------------------ owner
 
@@ -80,6 +86,32 @@ contract FamilyWill is IExecutionHook {
         uint32 silence,
         uint32 window
     ) external {
+        _make(heirs, shares, tokens, silence, window, false);
+    }
+
+    /// For a wallet without Calibur. The owner also approves this contract for
+    /// each token; heirs take their shares with `take` after release. ERC-20 only.
+    function makeWillWithAllowance(
+        address[] calldata heirs,
+        uint16[] calldata shares,
+        address[] calldata tokens,
+        uint32 silence,
+        uint32 window
+    ) external {
+        for (uint256 i; i < tokens.length; i++) {
+            if (tokens[i] == ETH) revert BadWill(); // ETH cannot be pulled
+        }
+        _make(heirs, shares, tokens, silence, window, true);
+    }
+
+    function _make(
+        address[] calldata heirs,
+        uint16[] calldata shares,
+        address[] calldata tokens,
+        uint32 silence,
+        uint32 window,
+        bool pull
+    ) private {
         uint256 n = heirs.length;
         if (n == 0 || n > MAX_HEIRS || shares.length != n) revert BadWill();
         if (tokens.length == 0 || tokens.length > MAX_TOKENS) revert BadWill();
@@ -95,12 +127,14 @@ contract FamilyWill is IExecutionHook {
             if (heir == address(0) || heir == msg.sender || shares[i] == 0) revert BadWill();
             bytes32 keyHash = CaliburKeys.hashOf(heir);
             if (_heirSlot[msg.sender][v][keyHash] != 0) revert BadWill(); // listed twice
-            // An heir key without this hook could move anything at any time.
-            uint256 settings = ICalibur(msg.sender).getKeySettings(keyHash);
-            if (
-                !ICalibur(msg.sender).isRegistered(keyHash) || CaliburKeys.hookOf(settings) != address(this)
-                    || CaliburKeys.isAdmin(settings)
-            ) revert HeirKeyNotGuarded(heir);
+            if (!pull) {
+                // An heir key without this hook could move anything at any time.
+                uint256 settings = ICalibur(msg.sender).getKeySettings(keyHash);
+                if (
+                    !ICalibur(msg.sender).isRegistered(keyHash) || CaliburKeys.hookOf(settings) != address(this)
+                        || CaliburKeys.isAdmin(settings)
+                ) revert HeirKeyNotGuarded(heir);
+            }
             _heirSlot[msg.sender][v][keyHash] = i + 1;
             _namedBy[heir].push(msg.sender);
             sum += shares[i];
@@ -117,6 +151,7 @@ contract FamilyWill is IExecutionHook {
         w.tokens = tokens;
         w.silence = silence;
         w.window = window;
+        w.pull = pull;
         w.lastSeen = uint64(block.timestamp);
         w.claimOpenedAt = 0;
         emit WillMade(msg.sender, v, heirs, shares, tokens, silence, window);
@@ -184,13 +219,33 @@ contract FamilyWill is IExecutionHook {
             token = to;
         }
         if (recipient != heir) revert NotYourAddress();
-        if (!_listed(w, token)) revert TokenNotInWill();
+        _charge(owner, w, slot, heir, token, amount);
+        return (IExecutionHook.beforeExecute.selector, "");
+    }
 
-        // Shares are of the balance at the first payout of this token.
+    // ------------------------------------------------------------ heirs, allowance wills
+
+    /// After release, an heir of an allowance will takes up to their share of
+    /// `token`, straight from the owner's wallet to their own.
+    function take(address owner, address token, uint256 amount) external {
+        Will storage w = _wills[owner];
+        if (!w.pull) revert NotAnAllowanceWill();
+        uint256 slot = _heirSlot[owner][w.version][CaliburKeys.hashOf(msg.sender)];
+        if (slot == 0 || w.heirs.length == 0) revert NotAnHeirKey();
+        uint64 releaseAt = w.claimOpenedAt + w.window;
+        if (w.claimOpenedAt == 0 || block.timestamp < releaseAt) revert NotReleased(releaseAt);
+        _charge(owner, w, slot, msg.sender, token, amount);
+        if (!IERC20(token).transferFrom(owner, msg.sender, amount)) revert TransferFailed();
+    }
+
+    /// Books a payout against the heir's share. Shares are of what the will
+    /// could pay at the first payout of each token.
+    function _charge(address owner, Will storage w, uint256 slot, address heir, address token, uint256 amount) private {
+        if (!_listed(w, token)) revert TokenNotInWill();
         uint64 v = w.version;
         uint256 base = _base[owner][v][token];
         if (base == 0) {
-            base = _balance(owner, token) + _totalPaid[owner][v][token];
+            base = _available(owner, w, token) + _totalPaid[owner][v][token];
             _base[owner][v][token] = base;
         }
         uint256 due = base * w.shares[slot - 1] / ALL;
@@ -198,9 +253,7 @@ contract FamilyWill is IExecutionHook {
         if (amount > due - paid) revert MoreThanShare(due - paid);
         _paid[owner][v][token][heir] = paid + amount;
         _totalPaid[owner][v][token] += amount;
-
         emit SharePaid(owner, heir, token, amount);
-        return (IExecutionHook.beforeExecute.selector, "");
     }
 
     /// Not used: the hook address does not set AFTER_EXECUTE.
@@ -258,7 +311,7 @@ contract FamilyWill is IExecutionHook {
         if (slot == 0) return 0;
         uint64 v = w.version;
         uint256 base = _base[owner][v][token];
-        if (base == 0) base = _balance(owner, token) + _totalPaid[owner][v][token];
+        if (base == 0) base = _available(owner, w, token) + _totalPaid[owner][v][token];
         return base * w.shares[slot - 1] / ALL - _paid[owner][v][token][heir];
     }
 
@@ -275,7 +328,13 @@ contract FamilyWill is IExecutionHook {
         return false;
     }
 
-    function _balance(address owner, address token) private view returns (uint256) {
-        return token == ETH ? owner.balance : IERC20(token).balanceOf(owner);
+    /// What the will can pay out of `token`: the balance, and for an
+    /// allowance will no more than the allowance left.
+    function _available(address owner, Will storage w, address token) private view returns (uint256) {
+        if (token == ETH) return owner.balance;
+        uint256 bal = IERC20(token).balanceOf(owner);
+        if (!w.pull) return bal;
+        uint256 allowed = IERC20(token).allowance(owner, address(this));
+        return allowed < bal ? allowed : bal;
     }
 }
