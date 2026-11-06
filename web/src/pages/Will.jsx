@@ -189,7 +189,7 @@ function Editor({ me, data, send, refresh }) {
           <li className="y"><Icon name="check" />You can change or cancel this will any time.</li>
           <li className="n"><Icon name="x" />Zoza and the watcher cannot move your money. They can only open the claim window.</li>
         </ul>
-        {!data?.delegated && <Callout tone="guard">This also upgrades your wallet to Uniswap's Calibur smart wallet. Same address, and Zoza pays the fee.</Callout>}
+        {!data?.delegated && !me.injected && <Callout tone="guard">This also upgrades your wallet to Uniswap's Calibur smart wallet. Same address, and Zoza pays the fee.</Callout>}
       </div>
 
       <div className="between" style={{ marginTop: 18 }}>

@@ -333,7 +333,11 @@ export default function PlanNew() {
               <li className="n"><Icon name="x" />Zoza, the nominee and the watcher cannot move it anywhere else.</li>
             </ul>
           </div>
-          {!data?.delegated && (
+          {me.injected ? (
+            <Callout tone="info">
+              Your wallet sends {2} transactions, one after another: a spending cap for these instalments, then the plan. It pays a small gas fee in Sepolia ETH for each.
+            </Callout>
+          ) : !data?.delegated && (
             <Callout tone="guard">
               This also upgrades your wallet to Uniswap's Calibur smart wallet. Your address stays the same, and Zoza pays the fee.
             </Callout>

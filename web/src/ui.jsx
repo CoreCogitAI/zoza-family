@@ -154,13 +154,20 @@ export function Modal({ open, title, children, onClose }) {
   )
 }
 
-/// The three steps of every action: sign here, relayer sends, confirmed.
-export function SendSteps({ step, result, error }) {
-  const steps = [
-    ['sign', 'Signed on this device', 'Your key never leaves this browser'],
-    ['send', 'Sent by the Zoza relayer', 'Zoza pays the gas, so you need no ETH'],
-    ['done', 'Confirmed on Ethereum Sepolia', null],
-  ]
+/// The three steps of every action: sign, send, confirmed. A wallet made here
+/// signs and the relayer pays; a connected wallet sends and pays its own gas.
+export function SendSteps({ step, result, error, own = false, count = 1 }) {
+  const steps = own
+    ? [
+        ['sign', `Approve in your wallet${count > 1 ? ` (${count} transactions, one after another)` : ''}`, 'If no window opened, click the MetaMask icon in the browser toolbar'],
+        ['send', 'Sent by your wallet', 'Your wallet pays a small gas fee in Sepolia ETH'],
+        ['done', 'Confirmed on Ethereum Sepolia', null],
+      ]
+    : [
+        ['sign', 'Signed on this device', 'Your key never leaves this browser'],
+        ['send', 'Sent by the Zoza relayer', 'Zoza pays the gas, so you need no ETH'],
+        ['done', 'Confirmed on Ethereum Sepolia', null],
+      ]
   const at = steps.findIndex((s) => s[0] === step)
   return (
     <div className="sending" aria-live="polite">

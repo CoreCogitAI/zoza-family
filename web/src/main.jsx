@@ -80,7 +80,9 @@ function NetBanner() {
 function useSender() {
   const [job, setJob] = useState(null)
   const run = useCallback(async ({ title, signer, account, calls, after }) => {
-    setJob({ title, step: 'sign' })
+    // A connected wallet sends its own transactions and pays their gas.
+    const own = !!signer.injected && (!account || account.toLowerCase() === signer.address.toLowerCase())
+    setJob({ title, step: 'sign', own, count: calls.length })
     try {
       const result = await sendBatch({ signer, account, calls, onStep: (step) => setJob((j) => ({ ...j, step })) })
       setJob((j) => ({ ...j, step: 'done', result }))
@@ -93,7 +95,7 @@ function useSender() {
   }, [])
   const dialog = (
     <Modal open={!!job} title={job?.title} onClose={() => (job?.step === 'done' || job?.error) && setJob(null)}>
-      {job && <SendSteps step={job.step} result={job.result} error={job.error} />}
+      {job && <SendSteps step={job.step} result={job.result} error={job.error} own={job.own} count={job.count} />}
       {(job?.step === 'done' || job?.error) && (
         <div className="row" style={{ justifyContent: 'flex-end', marginTop: 16 }}>
           <button className="btn primary" onClick={() => setJob(null)}>
