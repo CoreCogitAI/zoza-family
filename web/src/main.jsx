@@ -1,8 +1,10 @@
 import { createContext, StrictMode, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { onStats, start as startAnon, stats as anonStats } from './anon.js'
-import { loadConfig, sendBatch } from './chain.js'
-import { choose, current, family, loadMembers, mode, signOut, startDemo, watchWallet } from './family.js'
+import { NETWORKS, onStats, setNetwork, start as startAnon, stats as anonStats } from './anon.js'
+import { config as liveConfig, loadConfig, sendBatch } from './chain.js'
+import { hasPass } from './auth.js'
+import { providerFor } from './wallets.js'
+import { choose, current, family, loadMembers, loadSelf, mode, signOut, startDemo, watchWallet } from './family.js'
 import { useInbox } from './data.js'
 import { Face, Icon, Modal, rel, SendSteps, useNow } from './ui.jsx'
 import Home from './pages/Home.jsx'
@@ -40,6 +42,38 @@ function useAnon() {
   const [s, setS] = useState({ ...anonStats })
   useEffect(() => onStats(setS), [])
   return s
+}
+
+/// The privacy network has not connected: say so, and let the person choose.
+/// Never switches on its own, since Direct is not private.
+function NetBanner() {
+  useAnon()
+  const now = useNow()
+  const s = anonStats
+  const slow = s.state === 'starting' && s.chosenAt && now * 1000 - s.chosenAt > 30_000
+  if (s.network === 'direct' || !(slow || s.state === 'failed')) return null
+  const name = NETWORKS[s.network]?.label ?? s.network
+  const pick = (n) => (setNetwork(n), setTimeout(() => location.reload(), 300))
+  return (
+    <div className="callout warn" role="alert" style={{ margin: '0 auto 20px', maxWidth: 'var(--page)' }}>
+      <div>
+        <b>{name} has not connected{s.state === 'failed' ? `: ${s.error}` : ' after 30 seconds'}.</b> Until it does, your family, plans and messages cannot load.
+        <div className="row" style={{ marginTop: 10, gap: 8 }}>
+          {s.network !== 'nox' && (
+            <button className="btn small primary" onClick={() => pick('nox')}>
+              Use the Nox mixnet
+            </button>
+          )}
+          <button className="btn small" onClick={() => pick('direct')}>
+            Send directly (not private)
+          </button>
+          <a className="btn ghost small" href="#/privacy">
+            About these networks
+          </a>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 /// Run a batch with the three-step dialog: sign here, relayer sends, confirmed.
@@ -266,7 +300,10 @@ function App() {
           </div>
         </div>
       </header>
-      <main>{body}</main>
+      <main>
+        <NetBanner />
+        {body}
+      </main>
       <footer className="footer">
         <div className="footer-in">
           <span>Zoza Family · a will, savings plans and a nominee, inside your own wallet. Open source, MIT.</span>
@@ -295,6 +332,31 @@ setInterval(async () => {
 const reloadIfStale = () => stale && !document.querySelector('.spinner') && location.reload()
 window.addEventListener('hashchange', reloadIfStale)
 document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && reloadIfStale())
+
+// Only when the server runs with LOG_API=1: every 30 s, and on any error, one
+// short line about this tab (page, who, read pass, the wallet's own account,
+// any warning shown) goes to the server log, so a problem in one browser shows.
+const diagErrors = []
+window.addEventListener('error', (e) => diagErrors.push(`error: ${e.message}`))
+window.addEventListener('zf-diag', (e) => diagErrors.push(e.detail))
+window.addEventListener('unhandledrejection', (e) => diagErrors.push(`rejected: ${e.reason?.shortMessage ?? e.reason?.message ?? e.reason}`))
+async function diag() {
+  if (!liveConfig?.diag) return
+  try {
+    const me = current()
+    let wallet = '-'
+    if (me?.injected) {
+      const [a] = (await providerFor(loadSelf()?.wallet)?.request({ method: 'eth_accounts' }).catch((e) => [`err ${e.message}`])) ?? []
+      wallet = !a ? 'none' : a.toLowerCase?.() === me.address.toLowerCase() ? 'same' : a
+    }
+    const shown = [...document.querySelectorAll('.callout.warn, .callout.bad, .tiny.bad')].map((x) => x.innerText.trim().slice(0, 140)).slice(0, 3)
+    const line = [location.hash || '#/', me ? `${me.name} ${me.address} ${me.injected ? 'metamask' : 'local'}` : 'signed out', `pass=${me ? hasPass(me) : '-'}`, `wallet=${wallet}`, `net=${anonStats.network}/${anonStats.state} anon=${anonStats.anon} failed=${anonStats.failed}`, ...shown.map((x) => `shows: ${x}`), ...diagErrors.splice(0).slice(0, 3)].join(' | ')
+    await fetch('/api/diag', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ line }) })
+  } catch {}
+}
+setInterval(diag, 30_000)
+setTimeout(diag, 5000)
+window.addEventListener('hashchange', () => setTimeout(diag, 2000))
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

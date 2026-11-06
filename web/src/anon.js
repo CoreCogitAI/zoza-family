@@ -104,7 +104,9 @@ export function start(network = chosenNetwork()) {
   worker?.close()
   worker = null
   current = network
-  Object.assign(stats, { network, state: network === 'direct' ? 'ready' : 'starting', error: null, startedAt: Date.now(), readyAt: network === 'direct' ? Date.now() : null })
+  // chosenAt survives a restart of the same network, so a slow start stays visible.
+  const chosenAt = network === stats.network && stats.chosenAt ? stats.chosenAt : Date.now()
+  Object.assign(stats, { network, state: network === 'direct' ? 'ready' : 'starting', error: null, startedAt: Date.now(), chosenAt, readyAt: network === 'direct' ? Date.now() : null })
   emit()
   if (network === 'direct') return
   const n = NETWORKS[network]
@@ -155,11 +157,11 @@ export function provider(rpcUrl) {
       const t0 = performance.now()
       try {
         const json = await retry(async () => {
-          const res = await worker.fetch(rpcUrl, {
+          const res = await inTime(worker.fetch(rpcUrl, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
-          })
+          }))
           return res.json()
         }, true)
         stats.anon++
@@ -193,8 +195,9 @@ function inTime(p) {
   return Promise.race([p, new Promise((_, no) => setTimeout(() => no(new Error('NoAnswer')), ANSWER_MS))]).then(
     (r) => ((late = 0), r),
     (e) => {
-      // Twice without an answer: start a fresh worker, in case this one is stuck.
-      if (e.message === 'NoAnswer' && ++late >= 2) (late = 0), start(current)
+      // Twice without an answer from a worker that was working: start a fresh
+      // one. Never while one is still starting: Nym needs minutes to load.
+      if (e.message === 'NoAnswer' && stats.state === 'ready' && ++late >= 2) (late = 0), start(current)
       throw e
     },
   )
@@ -216,6 +219,7 @@ export async function serverFetch(path, init = {}, who) {
   } catch (e) {
     stats.failed++
     emit()
+    window.dispatchEvent(new CustomEvent('zf-diag', { detail: `serverFetch ${init.method ?? 'GET'} ${path.split('?')[0]}: ${e?.message ?? e}` }))
     if (NO_EXIT.test(String(e?.message ?? e))) throw new Error('The Nox mixnet could not connect, so nothing was sent. Try again in a minute, or choose another network on the Privacy page.')
     if (e?.message === 'NoAnswer') throw new Error(safe ? 'No answer through the Nox mixnet. Try again in a minute, or choose another network on the Privacy page.' : 'No answer through the Nox mixnet in 25 s. It may still have reached the server, so reload and check before trying again.')
     throw e
