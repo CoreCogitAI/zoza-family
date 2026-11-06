@@ -368,7 +368,7 @@ export default function Family() {
 
           {data && mine.length === 0 && forMe.length === 0 && guard.length === 0 && data.namedIn.length === 0 && me.id !== 'priya' && (
             <Empty icon="users" title={`Nothing for ${me.name} yet`}>
-              Switch to Priya and start a plan or write a will that names {me.name}. {me.id === 'dada' ? 'Then Dada can send a gift from the plan page.' : ''}
+              {me.persona ? `Switch to Priya and start a plan or write a will that names ${me.name}. ${me.id === 'dada' ? 'Then Dada can send a gift from the plan page.' : ''}` : 'When someone names you in a plan or a will, it shows here. To name others, invite them first.'}
             </Empty>
           )}
         </div>
@@ -388,7 +388,8 @@ export default function Family() {
                 </div>
               ))}
             </div>
-            <p className="tiny muted" style={{ marginTop: 12 }}>Switch person at the top right to see Zoza Family from their side.</p>
+            {others.length === 0 && <p className="small muted">No one yet. Invite them above.</p>}
+            {me.persona && <p className="tiny muted" style={{ marginTop: 12 }}>Switch person at the top right to see Zoza Family from their side.</p>}
           </div>
           {data?.apr != null && (
             <div className="card tight">

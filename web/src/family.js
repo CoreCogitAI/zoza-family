@@ -1,12 +1,14 @@
-// The demo family. Each person has a wallet whose key is made on this device
-// and kept in this browser only. These are test wallets: in the Zoza app the
-// key lives in the phone's secure hardware instead.
+// Who is using this browser. A visitor starts signed out and chooses:
+//   wallet  their own wallet (MetaMask and others), or a key made here
+//   demo    the demo family, five test wallets made and kept in this browser
+// In the Zoza app the key lives in the phone's secure hardware instead.
 import { createWalletClient, custom, getAddress } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { sepolia } from 'viem/chains'
 import { authHeader, tokenFor } from './auth.js'
+import { providerFor } from './wallets.js'
 
-const PEOPLE = [
+export const PEOPLE = [
   { id: 'priya', name: 'Priya', role: 'Parent', about: 'Saves for her children and keeps her will', tone: 'teal' },
   { id: 'meera', name: 'Meera', role: 'Daughter, 6', about: 'Her studies and wedding plans', tone: 'rose' },
   { id: 'arjun', name: 'Arjun', role: 'Son, 24', about: 'Named in his mother\'s will', tone: 'indigo' },
@@ -14,34 +16,48 @@ const PEOPLE = [
   { id: 'dada', name: 'Dada', role: 'Grandfather', about: 'Sends gifts for birthdays', tone: 'green' },
 ]
 const KEY = 'zf.family.v1'
-
-// Someone who joined a family from their own device: a wallet they connected,
-// or a key made in this browser. Stored as { kind, address, key?, name, inviter }.
-const SELF = 'zf.self'
+const SELF = 'zf.self' // { kind: 'injected' | 'local', address, key?, wallet?, name, role, inviter }
+const MODE = 'zf.mode'
 const TONES = ['indigo', 'amber', 'green', 'rose', 'teal']
 const toneOf = (a) => TONES[parseInt(a.slice(2, 4), 16) % TONES.length]
 
-function load() {
+const get = (k) => {
   try {
-    const saved = JSON.parse(localStorage.getItem(KEY) ?? 'null')
-    if (saved && PEOPLE.every((p) => saved[p.id])) return saved
-  } catch {}
-  const keys = Object.fromEntries(PEOPLE.map((p) => [p.id, generatePrivateKey()]))
+    return localStorage.getItem(k)
+  } catch {
+    return null
+  }
+}
+const set = (k, v) => {
   try {
-    localStorage.setItem(KEY, JSON.stringify(keys))
+    v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v)
   } catch {}
-  return keys
 }
 
-let keys = load()
+export function mode() {
+  const m = get(MODE)
+  if (m) return m
+  // Earlier visits: someone who picked a person or joined keeps their session.
+  if (get(SELF)) return 'wallet'
+  if (get('zf.me') && get(KEY)) return 'demo'
+  return null
+}
+
+function demoKeys() {
+  try {
+    const saved = JSON.parse(get(KEY) ?? 'null')
+    if (saved && PEOPLE.every((p) => saved[p.id])) return saved
+  } catch {}
+  return null
+}
+
 let members = []
 export let family = build()
 
 function build() {
-  const people = PEOPLE.map((p) => {
-    const signer = privateKeyToAccount(keys[p.id])
-    return { ...p, address: signer.address, signer, persona: true }
-  })
+  if (mode() === 'demo' && !demoKeys()) set(KEY, JSON.stringify(Object.fromEntries(PEOPLE.map((p) => [p.id, generatePrivateKey()]))))
+  const keys = mode() === 'demo' ? demoKeys() : null
+  const people = keys ? PEOPLE.map((p) => ({ ...p, address: privateKeyToAccount(keys[p.id]).address, signer: privateKeyToAccount(keys[p.id]), persona: true })) : []
   const me = self()
   const all = [...people, ...(me ? [me] : []), ...members]
   return all.filter((p, i) => all.findIndex((q) => q.address.toLowerCase() === p.address.toLowerCase()) === i)
@@ -49,7 +65,7 @@ function build() {
 
 export function loadSelf() {
   try {
-    return JSON.parse(localStorage.getItem(SELF) ?? 'null')
+    return JSON.parse(get(SELF) ?? 'null')
   } catch {
     return null
   }
@@ -58,56 +74,95 @@ export function loadSelf() {
 function self() {
   const s = loadSelf()
   if (!s) return null
-  const signer = s.kind === 'local' ? privateKeyToAccount(s.key) : injectedSigner(s.address)
-  const role = s.inviter ? `${s.inviter.name}'s ${s.role}` : 'Your wallet'
+  const signer = s.kind === 'local' ? privateKeyToAccount(s.key) : injectedSigner(s.address, s.wallet)
+  const role = s.inviter ? `${s.inviter.name}'s ${s.role}` : s.kind === 'local' ? 'Wallet made here' : 'Your wallet'
   return { id: 'self', name: s.name, role, about: s.kind === 'local' ? 'A wallet made in this browser' : 'Your own wallet', tone: toneOf(s.address), address: getAddress(s.address), signer, injected: s.kind !== 'local' }
 }
 
-/// Connect a browser wallet (MetaMask and others) as "you", without an invite.
-export async function connectWallet() {
-  const wallet = createWalletClient({ chain: sepolia, transport: custom(window.ethereum) })
-  const [address] = await wallet.requestAddresses()
-  await wallet.switchChain({ id: sepolia.id }).catch(() => {})
-  saveSelf({ kind: 'injected', address: getAddress(address), name: 'You', role: 'family', inviter: null })
+export function saveSelf(s) {
+  set(SELF, JSON.stringify(s))
+  if (mode() !== 'demo') set(MODE, 'wallet')
+  family = build()
+}
+
+/// Use a browser wallet (one from wallets()) as "you".
+export async function connectWallet(w) {
+  const client = createWalletClient({ chain: sepolia, transport: custom(w.provider) })
+  const [address] = await client.requestAddresses()
+  await client.switchChain({ id: sepolia.id }).catch(() => {})
+  set(MODE, 'wallet')
+  saveSelf({ kind: 'injected', wallet: w.id, address: getAddress(address), name: loadSelf()?.name ?? 'You', role: 'family', inviter: null })
   // One signature now, so the inbox and family list can be read for a week.
   await tokenFor(self(), true).catch(() => null)
+  choose('self')
 }
 
-export function forgetSelf() {
-  try {
-    localStorage.removeItem(SELF)
-  } catch {}
+/// A key made in this browser, for someone without a wallet.
+export function makeWallet(name) {
+  const key = generatePrivateKey()
+  set(MODE, 'wallet')
+  saveSelf({ kind: 'local', key, address: privateKeyToAccount(key).address, name: name || 'You', role: 'family', inviter: null })
+  choose('self')
+}
+
+/// The demo family: five test wallets made once and kept in this browser.
+export function startDemo() {
+  if (!demoKeys()) set(KEY, JSON.stringify(Object.fromEntries(PEOPLE.map((p) => [p.id, generatePrivateKey()]))))
+  set(MODE, 'demo')
+  family = build()
+  choose('priya')
+}
+
+export function signOut() {
+  set(SELF, null)
+  set(MODE, null)
+  set('zf.me', null)
+  members = []
   family = build()
 }
 
-export function saveSelf(s) {
-  try {
-    localStorage.setItem(SELF, JSON.stringify(s))
-  } catch {}
-  family = build()
-}
-
-/// A browser wallet (MetaMask and others). It signs typed data and messages;
-/// it cannot sign a 7702 upgrade for us, so its own actions pay their own gas.
-export function injectedSigner(address) {
-  const wallet = createWalletClient({ account: getAddress(address), chain: sepolia, transport: custom(window.ethereum) })
+/// A browser wallet signs typed data and messages; it cannot sign a 7702
+/// upgrade for us, so its own actions send their own transactions.
+export function injectedSigner(address, walletId) {
+  const provider = () => providerFor(walletId)
+  const client = () => createWalletClient({ account: getAddress(address), chain: sepolia, transport: custom(provider()) })
   return {
     address: getAddress(address),
     injected: true,
-    wallet,
-    signTypedData: (args) => wallet.signTypedData(args),
-    signMessage: ({ message }) => wallet.signMessage({ message }),
+    get wallet() {
+      return client()
+    },
+    signTypedData: (args) => client().signTypedData(args),
+    signMessage: ({ message }) => client().signMessage({ message }),
   }
 }
 
-/// People this family invited who accepted, so plans and wills can name them.
+/// Follow the wallet: a different account becomes "you"; none signs out.
+export function watchWallet(onChange) {
+  const s = loadSelf()
+  if (s?.kind !== 'injected') return () => {}
+  const p = providerFor(s.wallet)
+  if (!p?.on) return () => {}
+  const handler = (accounts) => {
+    const now = loadSelf()
+    if (!now || now.kind !== 'injected') return
+    if (!accounts?.length) signOut()
+    else if (getAddress(accounts[0]) !== getAddress(now.address)) saveSelf({ ...now, address: getAddress(accounts[0]), name: 'You', inviter: null })
+    else return
+    onChange()
+  }
+  p.on('accountsChanged', handler)
+  return () => p.removeListener?.('accountsChanged', handler)
+}
+
+/// People this browser's people invited who accepted, so plans and wills can name them.
 export async function loadMembers() {
   const s = loadSelf()
   const readers = build().filter((p) => p.signer)
   try {
     const headers = await authHeader(readers)
-    const res = await fetch(`/api/invites?from=${readers.map((p) => p.address).join(',')}`, { headers })
-    const list = res.ok ? await res.json() : []
+    const res = readers.length ? await fetch(`/api/invites?from=${readers.map((p) => p.address).join(',')}`, { headers }) : null
+    const list = res?.ok ? await res.json() : []
     members = list
       .filter((i) => i.acceptedBy)
       .map((i) => ({ id: `m-${i.acceptedBy.toLowerCase()}`, name: i.name, role: `${i.fromName}'s ${i.role === 'family' ? 'family' : i.role}`, about: 'Joined with their own wallet', tone: toneOf(i.acceptedBy), address: i.acceptedBy, signer: null }))
@@ -117,32 +172,18 @@ export async function loadMembers() {
   return family
 }
 
-export const person = (id) => family.find((p) => p.id === id && p.signer) ?? family[0]
+export const person = (id) => family.find((p) => p.id === id && p.signer) ?? family.find((p) => p.signer) ?? null
 export const byAddress = (a) => family.find((p) => p.address.toLowerCase() === a?.toLowerCase())
 export const nameOf = (a) => byAddress(a)?.name ?? `${a.slice(0, 6)}…${a.slice(-4)}`
 
 export function current() {
-  try {
-    return person(localStorage.getItem('zf.me') ?? 'priya')
-  } catch {
-    return family[0]
-  }
+  const m = mode()
+  if (!m) return null
+  return person(get('zf.me') ?? (m === 'wallet' ? 'self' : 'priya'))
 }
 
 export function choose(id) {
-  try {
-    localStorage.setItem('zf.me', id)
-  } catch {}
-}
-
-/// New keys for everyone: a fresh family on chain.
-export function resetFamily() {
-  keys = Object.fromEntries(PEOPLE.map((p) => [p.id, generatePrivateKey()]))
-  try {
-    localStorage.setItem(KEY, JSON.stringify(keys))
-    localStorage.removeItem('zf.cache')
-  } catch {}
-  family = build()
+  set('zf.me', id)
 }
 
 // Demo timing: a month passes in a minute, so a plan can mature on stage.

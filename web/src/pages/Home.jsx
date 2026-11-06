@@ -1,4 +1,4 @@
-import { family } from '../family.js'
+import { mode, PEOPLE, startDemo } from '../family.js'
 import { useApp } from '../main.jsx'
 import { Face, Icon } from '../ui.jsx'
 
@@ -18,10 +18,19 @@ const Line = ({ ico, cls, what, sub, amt, missed }) => (
 )
 
 export default function Home() {
-  const { setMe } = useApp()
+  const { me, setMe } = useApp()
   const startAs = (id, path) => {
-    setMe(id)
+    if (!me) {
+      location.hash = '/welcome'
+      return
+    }
+    if (mode() === 'demo') setMe(id)
     location.hash = path
+  }
+  const tryDemo = () => {
+    startDemo()
+    setMe('priya')
+    location.hash = '/family'
   }
   return (
     <>
@@ -43,10 +52,12 @@ export default function Home() {
             </a>
           </div>
           <div className="family-row">
-            {family.map((p) => (
+            {PEOPLE.map((p) => (
               <Face key={p.id} person={p} />
             ))}
-            <span className="txt">Try it as Priya, her children Meera and Arjun, uncle Ravi or Dada. Switch at the top right.</span>
+            <span className="txt">
+              <button className="linkish" onClick={tryDemo}>Try the demo family</button>: Priya, her children Meera and Arjun, uncle Ravi or Dada. Or sign in with your own wallet.
+            </span>
           </div>
         </div>
 
@@ -54,7 +65,7 @@ export default function Home() {
           <div className="pb-top">
             <div className="between">
               <div className="row" style={{ gap: 10 }}>
-                <Face person={family[1]} />
+                <Face person={PEOPLE[1]} />
                 <div>
                   <b>Meera's studies</b>
                   <div className="tiny muted">Matures on her 18th birthday · Nominee: Ravi</div>

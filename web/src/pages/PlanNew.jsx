@@ -13,11 +13,25 @@ const GOALS = [
   { id: 'future', icon: 'heart', label: 'Their future', name: (c) => `${c}'s future` },
 ]
 
+/// A plan or a will names people who joined with their own wallets.
+export function NeedFamily({ what, need }) {
+  return (
+    <div className="wizard">
+      <h1 style={{ margin: '10px 0 6px' }}>Invite your family first</h1>
+      <p className="muted" style={{ marginBottom: 18 }}>To {what}, Zoza needs {need}. Each person accepts an invite with their own wallet, so money only goes to wallets their owners proved.</p>
+      <a className="btn primary" href="#/family">
+        <Icon name="link" /> Invite from My family
+      </a>
+    </div>
+  )
+}
+
 export default function PlanNew() {
   const { me, send } = useApp()
   const { data } = usePerson(me.address, 30_000)
   const [step, setStep] = useState(0)
-  const [childId, setChildId] = useState(family.find((p) => p.id === 'meera' && p.id !== me.id)?.id ?? family.find((p) => p.id !== me.id).id)
+  const others = family.filter((p) => p.id !== me.id)
+  const [childId, setChildId] = useState(others.find((p) => p.id === 'meera')?.id ?? others[0]?.id ?? null)
   const [goal, setGoal] = useState('studies')
   const [amount, setAmount] = useState('1')
   const [months, setMonths] = useState(6)
@@ -28,6 +42,7 @@ export default function PlanNew() {
   const child = family.find((p) => p.id === childId)
   const nominee = family.find((p) => p.id === nomineeId && p.id !== me.id && p.id !== childId) ?? family.find((p) => p.id !== me.id && p.id !== childId)
   const g = GOALS.find((x) => x.id === goal)
+  if (!child || !nominee) return <NeedFamily what="start a plan" need="the child (or their wallet) and a nominee" />
   const name = g.name(child.name)
   let instalment = 0n
   try {

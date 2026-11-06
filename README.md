@@ -24,7 +24,7 @@ Requirements: Node 24, Foundry, Google Chrome (or any modern browser), and a `.e
 ./run.sh --stop
 ```
 
-The website opens as Priya, a parent. Switch person at the top right: Meera (daughter), Arjun (son), Ravi (uncle, nominee) and Dada (grandfather) each have their own wallet, made in the browser. "Get test money" on the family page sends test USDC (and a little ETH to Dada for gifts). With demo timing on, a month passes in a minute, so a plan can mature while you watch.
+The website starts signed out. Sign in with a browser wallet (any EIP-6963 wallet, such as MetaMask), make a wallet in the browser, or try the demo family: Priya, a parent; Meera (daughter), Arjun (son), Ravi (uncle, nominee) and Dada (grandfather), five test wallets you can switch between at the top right. "Get test money" on the family page sends test USDC (and a little ETH for gifts and for browser wallets' gas). With demo timing on, a month passes in a minute, so a plan can mature while you watch.
 
 ## How it works
 

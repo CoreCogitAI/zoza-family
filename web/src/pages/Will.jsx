@@ -5,6 +5,7 @@ import { abi, call, config, inr, usd } from '../chain.js'
 import { usePerson } from '../data.js'
 import { byAddress, demoTime, family, nameOf } from '../family.js'
 import { go, useApp } from '../main.jsx'
+import { NeedFamily } from './PlanNew.jsx'
 import { Callout, dateOf, Empty, Face, Icon, rel, Tip, useNow } from '../ui.jsx'
 
 const PERIODS = {
@@ -41,7 +42,7 @@ function Editor({ me, data, send, refresh }) {
   const existing = data?.will
   const candidates = family.filter((p) => p.id !== me.id)
   const [picked, setPicked] = useState(() =>
-    existing ? Object.fromEntries(existing.heirs.map((h, i) => [byAddress(h)?.id ?? h, existing.shares[i] / 100])) : { arjun: 60, meera: 40 },
+    existing ? Object.fromEntries(existing.heirs.map((h, i) => [byAddress(h)?.id ?? h, existing.shares[i] / 100])) : candidates.some((p) => p.id === 'arjun') ? { arjun: 60, meera: 40 } : {},
   )
   const [silence, setSilence] = useState(existing ? Number(existing.silence) : P.silence[0][0])
   const [windowS, setWindowS] = useState(existing ? Number(existing.window) : P.window[0][0])
@@ -79,6 +80,8 @@ function Editor({ me, data, send, refresh }) {
     if (r) setTimeout(() => go('/will'), 800)
   }
 
+  if (me.injected) return <Callout tone="info">Writing a will needs the Zoza wallet: the will lives inside your wallet as a Calibur hook, and a browser wallet like MetaMask cannot be upgraded to Calibur from a website. You can still be named in someone's will and receive your share.</Callout>
+  if (!candidates.length) return <NeedFamily what="write a will" need="at least one heir" />
   return (
     <div className="wizard">
       <a href="#/will" className="small">

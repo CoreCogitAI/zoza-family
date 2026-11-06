@@ -2,7 +2,7 @@ import { createContext, StrictMode, useCallback, useContext, useEffect, useRef, 
 import { createRoot } from 'react-dom/client'
 import { onStats, start as startAnon, stats as anonStats } from './anon.js'
 import { loadConfig, sendBatch } from './chain.js'
-import { choose, connectWallet, current, family, forgetSelf, loadMembers, loadSelf } from './family.js'
+import { choose, current, family, loadMembers, mode, signOut, startDemo, watchWallet } from './family.js'
 import { useInbox } from './data.js'
 import { Face, Icon, Modal, rel, SendSteps, useNow } from './ui.jsx'
 import Home from './pages/Home.jsx'
@@ -14,6 +14,7 @@ import Gift from './pages/Gift.jsx'
 import Privacy from './pages/Privacy.jsx'
 import How from './pages/How.jsx'
 import Join from './pages/Join.jsx'
+import Welcome from './pages/Welcome.jsx'
 import './styles.css'
 
 const Ctx = createContext(null)
@@ -72,29 +73,19 @@ function useSender() {
 
 function PersonSwitcher({ me, setMe }) {
   const [open, setOpen] = useState(false)
-  const [err, setErr] = useState(null)
-  const connect = async () => {
-    setErr(null)
-    try {
-      await connectWallet()
-      await loadMembers()
-      setMe('self')
-      setOpen(false)
-    } catch (e) {
-      setErr(e.shortMessage ?? e.message)
-    }
-  }
-  const disconnect = () => {
-    forgetSelf()
-    setMe('priya')
-    setOpen(false)
-  }
   const ref = useRef(null)
   useEffect(() => {
     const off = (e) => ref.current && !ref.current.contains(e.target) && setOpen(false)
     document.addEventListener('mousedown', off)
     return () => document.removeEventListener('mousedown', off)
   }, [])
+  const out = () => {
+    signOut()
+    setMe(null)
+    setOpen(false)
+    go('/')
+  }
+  const demo = mode() === 'demo'
   return (
     <div className="rel" ref={ref}>
       <button className="me-btn" onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}>
@@ -105,29 +96,29 @@ function PersonSwitcher({ me, setMe }) {
       </button>
       {open && (
         <div className="pop" role="menu">
-          <div className="pop-head">Each person here has their own wallet on this device.</div>
+          <div className="pop-head">{demo ? 'Demo family: five test wallets in this browser. Switch to see each side.' : 'Signed in with this wallet.'}</div>
           {family.filter((p) => p.signer).map((p) => (
             <button key={p.id} className="person" role="menuitem" aria-current={p.id === me.id} onClick={() => (setMe(p.id), setOpen(false))}>
               <Face person={p} />
               <span>
                 {p.name} · {p.role}
-                <small>{p.about}</small>
+                <small>{p.id === 'self' ? `${p.about} · ${p.address.slice(0, 6)}…${p.address.slice(-4)}` : p.about}</small>
               </span>
             </button>
           ))}
           <div className="pop-foot">
-            {!loadSelf() && window.ethereum && (
-              <button className="btn small block" onClick={connect}>
-                <Icon name="wallet" /> Connect my wallet
+            {demo ? (
+              <button className="btn small block" onClick={() => (setOpen(false), go('/welcome'))}>
+                <Icon name="wallet" /> Use my own wallet instead
+              </button>
+            ) : (
+              <button className="btn small block" onClick={() => (startDemo(), setMe('priya'), setOpen(false), go('/family'))}>
+                <Icon name="users" /> Try the demo family
               </button>
             )}
-            {!loadSelf() && !window.ethereum && <p className="tiny muted">Install MetaMask or another browser wallet to use your own wallet here.</p>}
-            {loadSelf()?.kind === 'injected' && (
-              <button className="btn small ghost block" onClick={disconnect}>
-                Disconnect my wallet
-              </button>
-            )}
-            {err && <p className="tiny bad">{err}</p>}
+            <button className="btn small ghost block" onClick={out}>
+              Sign out
+            </button>
           </div>
         </div>
       )}
@@ -198,8 +189,8 @@ function App() {
   const hash = useHash()
   const [cfg, setCfg] = useState(null)
   const [err, setErr] = useState(null)
-  const [meId, setMeId] = useState(() => current().id)
-  const me = family.find((p) => p.id === meId) ?? family[0]
+  const [meId, setMeId] = useState(() => current()?.id ?? null)
+  const me = (meId && family.find((p) => p.id === meId && p.signer)) || current()
   const sender = useSender()
   const [, bump] = useState(0)
 
@@ -212,16 +203,20 @@ function App() {
     if (cfg) loadMembers().then(() => bump((x) => x + 1))
   }, [hash, cfg])
   const setMe = (id) => {
-    choose(id)
+    if (id) choose(id)
     setMeId(id)
   }
+  // Follow the connected wallet: another account becomes "you", none signs out.
+  useEffect(() => watchWallet(() => (setMeId(current()?.id ?? null), bump((x) => x + 1))), [meId])
 
   if (err) return <main><div className="callout bad">Could not reach the Zoza Family server: {err}</div></main>
   if (!cfg) return <main><span className="spinner" /> Loading…</main>
 
   const [, page, arg] = hash.split('/')
+  const needsMe = ['family', 'plan', 'will', 'gift'].includes(page)
   let body
   if (!page) body = <Home />
+  else if (page === 'welcome' || (needsMe && !me)) body = <Welcome next={page === 'welcome' ? '/family' : hash} />
   else if (page === 'family') body = <Family key={me.id} />
   else if (page === 'plan' && arg === 'new') body = <PlanNew key={me.id} />
   else if (page === 'plan') body = <Plan id={Number(arg)} key={`${me.id}-${arg}`} />
@@ -235,7 +230,7 @@ function App() {
   return (
     <Ctx.Provider value={{ me, setMe, config: cfg, send: sender.run, rerender: () => bump((x) => x + 1) }}>
       <div className="strip">
-        <b>Test network.</b> Ethereum Sepolia with test money only. Each family member's wallet key is made and kept in this browser.
+        <b>Test network.</b> Ethereum Sepolia with test money only.{mode() === 'demo' ? ' The demo family\'s wallet keys are made and kept in this browser.' : ''}
       </div>
       <header className="top">
         <div className="top-in">
@@ -254,8 +249,16 @@ function App() {
           </nav>
           <div className="who">
             <PrivChip />
-            <Inbox me={me} key={me.id} />
-            <PersonSwitcher me={me} setMe={setMe} />
+            {me ? (
+              <>
+                <Inbox me={me} key={me.id} />
+                <PersonSwitcher me={me} setMe={setMe} />
+              </>
+            ) : (
+              <a className="btn small primary" href="#/welcome">
+                <Icon name="wallet" /> Sign in
+              </a>
+            )}
           </div>
         </div>
       </header>
