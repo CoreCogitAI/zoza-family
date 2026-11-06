@@ -54,8 +54,9 @@ export async function accept(code, { address, signature }) {
   return view(i)
 }
 
-/// Everyone the given people invited: pending and accepted.
+/// Everyone the given people invited, pending and accepted, and the invites
+/// they accepted themselves, so "who invited me" survives a new browser.
 export const sentBy = (owners) => {
   const set = new Set(owners.map((a) => a.toLowerCase()))
-  return Object.values(db.invites).filter((i) => set.has(i.from.toLowerCase())).map(view)
+  return Object.values(db.invites).filter((i) => set.has(i.from.toLowerCase()) || set.has(i.acceptedBy?.toLowerCase())).map(view)
 }
