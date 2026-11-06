@@ -3,7 +3,7 @@ import { encodeFunctionData, erc20Abi, zeroAddress } from 'viem'
 import { addGuardedKey, keyHashOf } from '../../../shared/calibur.mjs'
 import { abi, call, config, inr, usd } from '../chain.js'
 import { usePerson } from '../data.js'
-import { byAddress, demoTime, family, nameOf } from '../family.js'
+import { byAddress, demoTime, family, nameOf, signOut } from '../family.js'
 import { go, useApp } from '../main.jsx'
 import { NeedFamily } from './PlanNew.jsx'
 import { Callout, dateOf, Empty, Face, Icon, rel, Tip, useNow } from '../ui.jsx'
@@ -32,6 +32,33 @@ function Timeline({ state }) {
           <span className="tiny">{s}</span>
         </div>
       ))}
+    </div>
+  )
+}
+
+/// A browser wallet such as MetaMask will not sign an EIP-7702 upgrade to
+/// Calibur for a website, so it cannot hold the will's hook.
+function NeedLocalWallet() {
+  const { setMe } = useApp()
+  const switchWallet = () => {
+    signOut()
+    setMe(null)
+    go('/')
+  }
+  return (
+    <div className="wizard">
+      <Callout tone="info">
+        Writing a will needs a wallet made by Zoza Family. The will is a Calibur hook inside your wallet, and MetaMask won't let a website upgrade it to Calibur. You can still be named in someone's will and receive your share.
+      </Callout>
+      <div className="row" style={{ marginTop: 16, gap: 10 }}>
+        <button className="btn primary" onClick={switchWallet}>
+          <Icon name="plus" /> Make a wallet in this browser
+        </button>
+        <a className="btn" href="#/family">
+          <Icon name="back" /> Back to my family
+        </a>
+      </div>
+      <p className="tiny muted" style={{ marginTop: 10 }}>This signs you out of MetaMask here. You can connect it again at any time.</p>
     </div>
   )
 }
@@ -80,7 +107,7 @@ function Editor({ me, data, send, refresh }) {
     if (r) setTimeout(() => go('/will'), 800)
   }
 
-  if (me.injected) return <Callout tone="info">Writing a will needs the Zoza wallet: the will lives inside your wallet as a Calibur hook, and a browser wallet like MetaMask cannot be upgraded to Calibur from a website. You can still be named in someone's will and receive your share.</Callout>
+  if (me.injected) return <NeedLocalWallet />
   if (!candidates.length) return <NeedFamily what="write a will" need="at least one heir" />
   return (
     <div className="wizard">

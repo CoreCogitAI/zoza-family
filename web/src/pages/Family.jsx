@@ -246,7 +246,7 @@ export default function Family() {
               {me.injected ? (
                 <span className="badge neutral">
                   Connected wallet
-                  <Tip>Your own wallet. It can save into plans, give gifts and receive what is left to you. It pays its own small gas fees. Writing a will needs the Zoza wallet.</Tip>
+                  <Tip>Your own wallet. It can save into plans, give gifts and receive what is left to you. It pays its own small gas fees. Writing a will needs a wallet made by Zoza Family.</Tip>
                 </span>
               ) : data?.delegated ? (
                 <span className="badge guard">
