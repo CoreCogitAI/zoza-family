@@ -21,7 +21,15 @@ export const status = { mode: MODE, lastTick: null, lastError: null, actions: []
 
 async function act(functionName, address, a, args, label) {
   if (MODE !== 'server' || !keeper) return null
-  const hash = await keeper.writeContract({ address, abi: a, functionName, args, ...(await fees()) })
+  const req = { account: keeper.account, address, abi: a, functionName, args }
+  // Exact estimates can run out of gas on Sepolia; add the same margin as the relayer.
+  let gas
+  try {
+    gas = await client.estimateContractGas(req)
+  } catch {
+    return null // not due on this node yet; the next tick tries again
+  }
+  const hash = await keeper.writeContract({ ...req, gas: (gas * 13n) / 10n, ...(await fees()) })
   const r = await client.waitForTransactionReceipt({ hash, timeout: 120_000 })
   status.actions.unshift({ at: Date.now(), label, hash, ok: r.status === 'success' })
   status.actions.length = Math.min(status.actions.length, 30)
