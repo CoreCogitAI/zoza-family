@@ -189,6 +189,102 @@ contract FamilySavingsTest is Base {
         assertEq(usdc.balanceOf(priya), before + MONTHLY);
     }
 
+    // ------------------------------------------------------------ changing a plan
+
+    function test_changeNominee_dropsAgreementAndWaitsAPeriod() public {
+        uint256 id = _open(false, _year());
+        savings.collect(id);
+        vm.prank(ravi);
+        savings.agreeToClose(id);
+
+        address aunt = makeAddr("aunt");
+        vm.prank(priya);
+        savings.setNominee(id, aunt);
+        assertEq(savings.planOf(id).nominee, aunt);
+        assertFalse(savings.planOf(id).nomineeAgreesToClose); // Ravi's agreement is gone
+
+        vm.prank(ravi); // the old nominee has no say now
+        vm.expectRevert(FamilySavings.NotNominee.selector);
+        savings.agreeToClose(id);
+
+        vm.prank(aunt);
+        savings.agreeToClose(id);
+        vm.prank(priya);
+        vm.expectRevert(abi.encodeWithSelector(FamilySavings.NomineeTooNew.selector, uint64(block.timestamp + MONTH)));
+        savings.closeEarly(id);
+
+        vm.warp(block.timestamp + MONTH);
+        vm.prank(priya);
+        savings.closeEarly(id);
+        assertTrue(savings.planOf(id).closed);
+        (,, uint256[] memory asNominee) = savings.plansOf(aunt);
+        assertEq(asNominee.length, 1);
+    }
+
+    function test_onlyParentChangesNominee() public {
+        uint256 id = _open(false, _year());
+        vm.prank(ravi);
+        vm.expectRevert(FamilySavings.NotParent.selector);
+        savings.setNominee(id, ravi);
+        vm.startPrank(priya);
+        vm.expectRevert(FamilySavings.BadPlan.selector);
+        savings.setNominee(id, priya); // the parent cannot be the nominee
+        vm.expectRevert(FamilySavings.BadPlan.selector);
+        savings.setNominee(id, address(0));
+        vm.stopPrank();
+    }
+
+    function test_extendMaturity_onlyLater() public {
+        uint64 maturity = _year();
+        uint256 id = _open(false, maturity);
+        savings.collect(id);
+        vm.startPrank(priya);
+        vm.expectRevert(FamilySavings.BadPlan.selector);
+        savings.extendMaturity(id, maturity - 1);
+        savings.extendMaturity(id, maturity + 365 days);
+        vm.stopPrank();
+        vm.prank(ravi);
+        vm.expectRevert(FamilySavings.NotParent.selector);
+        savings.extendMaturity(id, maturity + 400 days);
+
+        vm.warp(maturity);
+        vm.expectRevert(abi.encodeWithSelector(FamilySavings.NotMature.selector, maturity + 365 days));
+        savings.release(id);
+        vm.warp(maturity + 365 days);
+        savings.release(id);
+        assertEq(usdc.balanceOf(meera), MONTHLY);
+    }
+
+    function test_changeAmount_fromTheNextInstalment() public {
+        uint256 id = _open(false, _year());
+        savings.collect(id);
+        vm.prank(priya);
+        savings.setInstalment(id, 10e6);
+        vm.warp(block.timestamp + MONTH);
+        savings.collect(id);
+        assertEq(savings.valueOf(id), MONTHLY + 10e6);
+        vm.prank(priya);
+        vm.expectRevert(FamilySavings.BadPlan.selector);
+        savings.setInstalment(id, 0);
+    }
+
+    function test_payChildEarly_needsNominee() public {
+        uint256 id = _open(true, _year());
+        savings.collect(id);
+        vm.prank(priya);
+        vm.expectRevert(FamilySavings.NomineeMustAgree.selector);
+        savings.payChildEarly(id);
+        vm.prank(ravi);
+        savings.agreeToClose(id);
+        vm.prank(stranger);
+        vm.expectRevert(FamilySavings.NotParent.selector);
+        savings.payChildEarly(id);
+        vm.prank(priya);
+        savings.payChildEarly(id);
+        assertApproxEqAbs(usdc.balanceOf(meera), MONTHLY, 10);
+        assertTrue(savings.planOf(id).closed);
+    }
+
     function test_badPlansRefused() public {
         vm.startPrank(priya);
         vm.expectRevert(FamilySavings.BadPlan.selector);

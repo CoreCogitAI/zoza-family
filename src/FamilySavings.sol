@@ -39,6 +39,7 @@ contract FamilySavings {
         uint64 nextDue;
         uint64 maturity;
         uint64 createdAt;
+        uint64 nomineeSince; // early closing waits one period after a new nominee
         uint32 paidCount;
         uint32 missedCount;
         uint256 units; // token amount, or shares of the Compound balance when `earn`
@@ -77,6 +78,10 @@ contract FamilySavings {
     event NomineeAgreedToClose(uint256 indexed id);
     event Matured(uint256 indexed id, address indexed child, uint256 amount);
     event ClosedEarly(uint256 indexed id, address indexed parent, uint256 amount);
+    event NomineeChanged(uint256 indexed id, address nominee);
+    event MaturityExtended(uint256 indexed id, uint64 maturity);
+    event InstalmentChanged(uint256 indexed id, uint128 instalment);
+    event PaidChildEarly(uint256 indexed id, address indexed child, uint256 amount);
 
     error BadPlan();
     error NoPlan();
@@ -88,6 +93,7 @@ contract FamilySavings {
     error NotMature(uint64 maturity);
     error PastMaturity();
     error NomineeMustAgree();
+    error NomineeTooNew(uint64 from);
     error MandatePaused();
     error TransferFailed();
     error Reentered();
@@ -148,12 +154,47 @@ contract FamilySavings {
 
     /// Close before maturity, after the nominee agrees. Money goes back to the parent.
     function closeEarly(uint256 id) external nonReentrant {
-        Plan storage p = _plan(id);
-        if (msg.sender != p.parent) revert NotParent();
-        if (p.closed) revert Closed();
-        if (!p.nomineeAgreesToClose) revert NomineeMustAgree();
+        Plan storage p = _early(id);
         uint256 amount = _payOut(p, p.parent);
         emit ClosedEarly(id, p.parent, amount);
+    }
+
+    /// End before maturity and pay the child now, after the nominee agrees.
+    function payChildEarly(uint256 id) external nonReentrant {
+        Plan storage p = _early(id);
+        uint256 amount = _payOut(p, p.child);
+        emit PaidChildEarly(id, p.child, amount);
+    }
+
+    /// A new nominee. Any agreement to close early is dropped, and early closing
+    /// waits one period, so a new nominee cannot be used to end the plan at once.
+    function setNominee(uint256 id, address nominee) external {
+        Plan storage p = _plan(id);
+        if (msg.sender != p.parent) revert NotParent();
+        if (p.closed || nominee == address(0) || nominee == p.parent || nominee == p.nominee) revert BadPlan();
+        p.nominee = nominee;
+        p.nomineeAgreesToClose = false;
+        p.nomineeSince = uint64(block.timestamp);
+        _linked[nominee].push(id);
+        emit NomineeChanged(id, nominee);
+    }
+
+    /// Save for longer. Only later: a longer lock only protects the child.
+    function extendMaturity(uint256 id, uint64 maturity) external {
+        Plan storage p = _plan(id);
+        if (msg.sender != p.parent) revert NotParent();
+        if (p.closed || maturity <= p.maturity) revert BadPlan();
+        p.maturity = maturity;
+        emit MaturityExtended(id, maturity);
+    }
+
+    /// A new monthly amount, from the next instalment on.
+    function setInstalment(uint256 id, uint128 instalment) external {
+        Plan storage p = _plan(id);
+        if (msg.sender != p.parent) revert NotParent();
+        if (p.closed || instalment == 0) revert BadPlan();
+        p.instalment = instalment;
+        emit InstalmentChanged(id, instalment);
     }
 
     // ------------------------------------------------------------ nominee
@@ -168,6 +209,7 @@ contract FamilySavings {
         emit ChildChanged(id, child, msg.sender);
     }
 
+    /// Agree that the parent may end the plan early, either way.
     function agreeToClose(uint256 id) external {
         Plan storage p = _plan(id);
         if (msg.sender != p.nominee) revert NotNominee();
@@ -276,6 +318,15 @@ contract FamilySavings {
             if (list[i] == id) return true;
         }
         return false;
+    }
+
+    function _early(uint256 id) private view returns (Plan storage p) {
+        p = _plan(id);
+        if (msg.sender != p.parent) revert NotParent();
+        if (p.closed) revert Closed();
+        if (!p.nomineeAgreesToClose) revert NomineeMustAgree();
+        uint64 from = p.nomineeSince + p.period;
+        if (p.nomineeSince != 0 && block.timestamp < from) revert NomineeTooNew(from);
     }
 
     function _plan(uint256 id) private view returns (Plan storage) {
