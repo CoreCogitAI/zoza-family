@@ -3,8 +3,8 @@ import { api, call, inr, sendBatch, usd } from '../chain.js'
 import { usePerson } from '../data.js'
 import { inviteMessage, ROLES } from '../../../shared/invites.mjs'
 import { serverFetch } from '../anon.js'
-import { authHeader } from '../auth.js'
-import { byAddress, family, loadMembers, nameOf } from '../family.js'
+import { authHeader, tokenFor } from '../auth.js'
+import { byAddress, family, loadMembers, loadSelf, nameOf, saveSelf } from '../family.js'
 import { useApp } from '../main.jsx'
 import { Addr, Callout, Empty, Face, Icon, rel, Skel, Tip, useNow } from '../ui.jsx'
 
@@ -142,12 +142,19 @@ function InviteCard({ me }) {
   const [err, setErr] = useState(null)
   const [sent, setSent] = useState([])
   const [copied, setCopied] = useState(null)
+  // A connected wallet reads its sent invites only after signing a read pass.
+  const [locked, setLocked] = useState(false)
+  const unnamed = me.id === 'self' && (!me.name || me.name === 'You')
+  const [myName, setMyName] = useState('')
 
   const load = useCallback(async () => {
     try {
       const res = await serverFetch(`/api/invites?from=${me.address}`, { headers: await authHeader([me]) }, me.address)
-      const list = res.ok ? await res.json() : []
-      setSent(list.sort((a, b) => b.at - a.at))
+      setLocked(res.status === 401)
+      if (!res.ok) return
+      const list = await res.json()
+      // Keep links made here even if a slow read has not listed them yet.
+      setSent((old) => [...list, ...old.filter((o) => !list.some((i) => i.code === o.code))].sort((a, b) => b.at - a.at))
       if (list.some((i) => i.acceptedBy && !byAddress(i.acceptedBy))) {
         await loadMembers()
         rerender()
@@ -160,18 +167,38 @@ function InviteCard({ me }) {
     return () => clearInterval(t)
   }, [load])
 
+  const unlock = async () => {
+    setErr(null)
+    try {
+      await tokenFor(me, true)
+      await loadMembers()
+      rerender()
+      await load()
+    } catch (e) {
+      setErr(e.shortMessage ?? e.message)
+    }
+  }
+
   const create = async () => {
     setBusy(true)
     setErr(null)
     try {
+      let fromName = me.name
+      if (unnamed) {
+        fromName = myName.trim()
+        saveSelf({ ...loadSelf(), name: fromName })
+      }
       const { code } = await serverFetch('/api/invites/code', {}, me.address).then((r) => r.json())
-      const i = { code, from: me.address, fromName: me.name, name: name.trim(), role }
+      const i = { code, from: me.address, fromName, name: name.trim(), role }
       const signature = await me.signer.signMessage({ message: inviteMessage(i) })
       const res = await serverFetch('/api/invites', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...i, signature }) }, me.address)
       const j = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(j.error ?? `error ${res.status}`)
       setName('')
-      await load()
+      setSent((old) => [j, ...old.filter((o) => o.code !== j.code)])
+      copy(j.code)
+      if (unnamed) rerender()
+      load()
     } catch (e) {
       setErr(e.shortMessage ?? e.message)
     } finally {
@@ -179,13 +206,14 @@ function InviteCard({ me }) {
     }
   }
   const link = (c) => `${location.origin}/#/join/${c}`
-  const copy = (c) => navigator.clipboard?.writeText(link(c)).then(() => (setCopied(c), setTimeout(() => setCopied(null), 1500)))
+  const copy = (c) => navigator.clipboard?.writeText(link(c)).then(() => (setCopied(c), setTimeout(() => setCopied(null), 1500))).catch(() => {})
 
   return (
     <div className="card">
       <h3 style={{ marginBottom: 6 }}>Invite your family</h3>
       <p className="tiny muted" style={{ marginBottom: 10 }}>They open the link and accept with their own wallet (MetaMask works), or make one. Then you can name them in a plan or your will.</p>
       <div className="stack-sm">
+        {unnamed && <input placeholder="Your name, as they will see it" value={myName} onChange={(e) => setMyName(e.target.value)} aria-label="Your name" maxLength={40} />}
         <input placeholder="Their name" value={name} onChange={(e) => setName(e.target.value)} aria-label="Name of the person to invite" maxLength={40} />
         <select value={role} onChange={(e) => setRole(e.target.value)} aria-label="Their role">
           {Object.entries(ROLES).map(([k, v]) => (
@@ -194,10 +222,15 @@ function InviteCard({ me }) {
             </option>
           ))}
         </select>
-        <button className="btn small" onClick={create} disabled={busy || !name.trim()}>
+        <button className="btn small" onClick={create} disabled={busy || !name.trim() || (unnamed && !myName.trim())}>
           {busy ? <span className="spinner" /> : <Icon name="link" />} Make an invite link
         </button>
         {err && <div className="tiny bad">{err}</div>}
+        {locked && (
+          <button className="btn ghost small" onClick={unlock}>
+            <Icon name="key" /> Show who you invited (one signature)
+          </button>
+        )}
       </div>
       {sent.length > 0 && (
         <div className="stack-sm" style={{ marginTop: 14 }}>
