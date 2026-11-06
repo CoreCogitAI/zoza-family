@@ -8,7 +8,7 @@ const dir = process.env.DATA_DIR ?? join(root, 'server', 'data')
 const file = join(dir, 'state.json')
 mkdirSync(dir, { recursive: true })
 
-const empty = () => ({ inbox: {}, seen: { plans: {}, wills: {} }, owners: [], faucet: {}, scannedTo: null })
+const empty = () => ({ inbox: {}, seen: { plans: {}, wills: {} }, owners: [], faucet: {}, invites: {}, scannedTo: null })
 export const db = existsSync(file) ? { ...empty(), ...JSON.parse(readFileSync(file, 'utf8')) } : empty()
 
 let pending

@@ -10,6 +10,7 @@ import { faucet, FaucetError } from './faucet.mjs'
 import { relay, RelayError, short } from './relay.mjs'
 import { db, notify } from './store.mjs'
 import { giftQuote, QuoteError } from './uniswap.mjs'
+import * as invites from './invites.mjs'
 import { rememberOwner, start, status } from './watcher.mjs'
 
 const WEB = process.env.WEB_DIST ?? join(root, 'web', 'dist')
@@ -65,6 +66,17 @@ async function api(req, res, url) {
     return send(res, 200, await giftQuote({ eth: url.searchParams.get('eth'), swapper: url.searchParams.get('swapper') }))
   }
 
+  // Family invites: a code to sign, create, read, accept, and the list a family sent.
+  if (req.method === 'GET' && path === '/api/invites/code') return send(res, 200, { code: invites.newCode() })
+  if (req.method === 'POST' && path === '/api/invites') return send(res, 200, await invites.create(await readJson(req)))
+  if (req.method === 'GET' && path === '/api/invites') {
+    const from = (url.searchParams.get('from') ?? '').split(',').filter((a) => isAddress(a))
+    return send(res, 200, invites.sentBy(from))
+  }
+  const inv = path.match(/^\/api\/invites\/([A-Za-z0-9_-]{12})(\/accept)?$/)
+  if (inv && req.method === 'GET' && !inv[2]) return send(res, 200, invites.get(inv[1]))
+  if (inv && req.method === 'POST' && inv[2]) return send(res, 200, await invites.accept(inv[1], await readJson(req)))
+
   const inbox = path.match(/^\/api\/inbox\/(0x[0-9a-fA-F]{40})$/)
   if (req.method === 'GET' && inbox) return send(res, 200, db.inbox[inbox[1].toLowerCase()] ?? [])
 
@@ -99,7 +111,7 @@ createServer(async (req, res) => {
   try {
     await api(req, res, url)
   } catch (e) {
-    const status = e instanceof RelayError ? e.status : e instanceof FaucetError || e instanceof QuoteError ? 400 : 500
+    const status = e instanceof RelayError ? e.status : e instanceof FaucetError || e instanceof QuoteError || e instanceof invites.InviteError ? 400 : 500
     if (status === 500) console.error(e)
     send(res, status, { error: status === 500 ? short(e) : e.message })
   }
