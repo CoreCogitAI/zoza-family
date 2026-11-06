@@ -8,6 +8,7 @@ import { tokenFor } from '../auth.js'
 import { family, loadMembers, loadSelf, saveSelf } from '../family.js'
 import { go, useApp } from '../main.jsx'
 import { Addr, Callout, Icon } from '../ui.jsx'
+import { onWallets, wallets } from '../wallets.js'
 
 const TITLE = {
   heir: (f, n) => `${f} wants to name ${n} as an heir`,
@@ -27,6 +28,10 @@ export default function Join({ code }) {
   const [inv, setInv] = useState(null)
   const [err, setErr] = useState(null)
   const [busy, setBusy] = useState(null)
+  // What the wallet is asking for: its prompt may sit unseen in a side panel.
+  const [step, setStep] = useState(null)
+  const [list, setList] = useState(wallets())
+  useEffect(() => onWallets(() => setList(wallets())), [])
   const mine = loadSelf()
 
   useEffect(() => {
@@ -35,29 +40,38 @@ export default function Join({ code }) {
       .catch((e) => setErr(e.message))
   }, [code])
 
-  const finish = async (kind, address, sign, key) => {
+  const finish = async (kind, address, sign, key, walletId) => {
     const signature = await sign(acceptMessage(inv))
+    setStep(null)
     const res = await serverFetch(`/api/invites/${code}/accept`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ address, signature }) }, address)
     const j = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error(j.error ?? `error ${res.status}`)
-    saveSelf({ kind, address, key, wallet: kind === 'injected' ? mine?.wallet : undefined, name: inv.name, role: inv.role, inviter: { address: inv.from, name: inv.fromName } })
-    await tokenFor(family.find((p) => p.id === 'self'), true).catch(() => null)
-    await loadMembers()
+    saveSelf({ kind, address, key, wallet: walletId, name: inv.name, role: inv.role, inviter: { address: inv.from, name: inv.fromName } })
     setMe('self')
     go(inv.role === 'heir' ? '/will' : '/family')
+    // The read pass and family list follow; the page does not wait for them.
+    tokenFor(family.find((p) => p.id === 'self'), true)
+      .catch(() => null)
+      .then(() => loadMembers())
   }
 
-  const connect = async () => {
-    setBusy('wallet')
+  const connect = async (w) => {
+    setBusy(w.id)
     setErr(null)
     try {
-      const wallet = createWalletClient({ chain: sepolia, transport: custom(window.ethereum) })
+      const wallet = createWalletClient({ chain: sepolia, transport: custom(w.provider) })
+      setStep(`Approve the connection in ${w.name}.`)
       const [address] = await wallet.requestAddresses()
-      await wallet.switchChain({ id: sepolia.id }).catch(() => {})
-      await finish('injected', getAddress(address), (message) => wallet.signMessage({ account: address, message }))
+      setStep(`Allow ${w.name} to switch to the Sepolia test network.`)
+      await Promise.race([wallet.switchChain({ id: sepolia.id }).catch(() => {}), new Promise((ok) => setTimeout(ok, 15_000))])
+      setStep(`Sign the acceptance in ${w.name}. It costs nothing.`)
+      await finish('injected', getAddress(address), (message) => wallet.signMessage({ account: address, message }), undefined, w.id)
     } catch (e) {
-      setErr(e.shortMessage ?? e.message)
+      const pending = e.code === -32002 || /already pending/i.test(e.message ?? '')
+      setErr(pending ? `${w.name} already has a request waiting. Open ${w.name} from the browser toolbar and answer it.` : e.shortMessage ?? e.message)
       setBusy(null)
+    } finally {
+      setStep(null)
     }
   }
 
@@ -105,10 +119,12 @@ export default function Join({ code }) {
         ) : (
           <>
             <p className="small">Choose the wallet {inv.fromName} should name. You will sign a short message saying you accept; it costs nothing and moves no money.</p>
-            {window.ethereum ? (
-              <button className="btn primary block" onClick={connect} disabled={!!busy}>
-                {busy === 'wallet' ? <span className="spinner" /> : <Icon name="key" />} Connect my wallet (MetaMask or any browser wallet)
-              </button>
+            {list.length > 0 ? (
+              list.map((w) => (
+                <button key={w.id} className="btn primary block" onClick={() => connect(w)} disabled={!!busy}>
+                  {busy === w.id ? <span className="spinner" /> : w.icon ? <img src={w.icon} alt="" width="18" height="18" /> : <Icon name="key" />} Accept with {w.name}
+                </button>
+              ))
             ) : (
               <p className="tiny muted">No browser wallet found. Install one, or make a wallet here.</p>
             )}
@@ -118,6 +134,14 @@ export default function Join({ code }) {
             <p className="tiny muted">
               A wallet made here keeps its key in this browser only, on the Sepolia test network. In the Zoza app the key lives in your phone's secure hardware.
             </p>
+            {busy && step && (
+              <Callout tone="info">
+                {step} If no window opened, click the {list.find((w) => w.id === busy)?.name ?? 'wallet'} icon in the browser toolbar.{' '}
+                <button className="btn ghost small" onClick={() => (setBusy(null), setStep(null))}>
+                  Cancel
+                </button>
+              </Callout>
+            )}
             {err && <Callout tone="bad">{err}</Callout>}
           </>
         )}

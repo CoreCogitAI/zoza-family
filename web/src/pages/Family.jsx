@@ -146,6 +146,9 @@ function InviteCard({ me }) {
   const [locked, setLocked] = useState(false)
   const unnamed = me.id === 'self' && (!me.name || me.name === 'You')
   const [myName, setMyName] = useState('')
+  // A connected wallet's prompt may sit unseen in its side panel: say what it waits for.
+  const [step, setStep] = useState(null)
+  const wallet = me.injected ? 'MetaMask' : null
 
   const load = useCallback(async () => {
     try {
@@ -169,6 +172,7 @@ function InviteCard({ me }) {
 
   const unlock = async () => {
     setErr(null)
+    setStep('Sign once so this browser can show who joined.')
     try {
       await tokenFor(me, true)
       await loadMembers()
@@ -176,6 +180,8 @@ function InviteCard({ me }) {
       await load()
     } catch (e) {
       setErr(e.shortMessage ?? e.message)
+    } finally {
+      setStep(null)
     }
   }
 
@@ -188,9 +194,17 @@ function InviteCard({ me }) {
         fromName = myName.trim()
         saveSelf({ ...loadSelf(), name: fromName })
       }
+      // Without a read pass this person would never see the invite accepted.
+      if (locked) {
+        setStep('First, sign once so this browser can show who joins.')
+        await tokenFor(me, true)
+        setLocked(false)
+      }
       const { code } = await serverFetch('/api/invites/code', {}, me.address).then((r) => r.json())
       const i = { code, from: me.address, fromName, name: name.trim(), role }
+      setStep('Now sign the invite.')
       const signature = await me.signer.signMessage({ message: inviteMessage(i) })
+      setStep(null)
       const res = await serverFetch('/api/invites', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...i, signature }) }, me.address)
       const j = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(j.error ?? `error ${res.status}`)
@@ -203,6 +217,7 @@ function InviteCard({ me }) {
       setErr(e.shortMessage ?? e.message)
     } finally {
       setBusy(false)
+      setStep(null)
     }
   }
   const link = (c) => `${location.origin}/#/join/${c}`
@@ -225,11 +240,22 @@ function InviteCard({ me }) {
         <button className="btn small" onClick={create} disabled={busy || !name.trim() || (unnamed && !myName.trim())}>
           {busy ? <span className="spinner" /> : <Icon name="link" />} Make an invite link
         </button>
+        {step && (
+          <Callout tone="info">
+            {step}
+            {wallet && ` Approve it in ${wallet}. If no window opened, click the ${wallet} icon in the browser toolbar.`}
+          </Callout>
+        )}
         {err && <div className="tiny bad">{err}</div>}
-        {locked && (
-          <button className="btn ghost small" onClick={unlock}>
-            <Icon name="key" /> Show who you invited (one signature)
-          </button>
+        {locked && !busy && !step && (
+          <Callout tone="warn">
+            You have not let this browser read your family list yet, so people who joined do not show.
+            <div style={{ marginTop: 8 }}>
+              <button className="btn small" onClick={unlock}>
+                <Icon name="key" /> Sign once to see who joined
+              </button>
+            </div>
+          </Callout>
         )}
       </div>
       {sent.some((i) => !i.acceptedBy) && <p className="tiny muted" style={{ marginTop: 14 }}>Send each link to the person yourself, by WhatsApp or any chat. They join by opening it.</p>}
