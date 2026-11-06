@@ -280,6 +280,22 @@ function App() {
   )
 }
 
+// A tab left open across a deploy keeps running old code. Look for a new build
+// every minute, and reload at a calm moment: a page change, or coming back to
+// the tab. Never while a wallet prompt may be open on this page.
+const BUNDLE = [...document.scripts].map((x) => x.src).find((x) => /\/assets\/index-[^/]+\.js$/.test(x))
+let stale = false
+setInterval(async () => {
+  try {
+    const html = await (await fetch('/', { cache: 'no-store' })).text()
+    const now = html.match(/\/assets\/index-[^"]+\.js/)?.[0]
+    if (BUNDLE && now && !BUNDLE.endsWith(now)) stale = true
+  } catch {}
+}, 60_000)
+const reloadIfStale = () => stale && !document.querySelector('.spinner') && location.reload()
+window.addEventListener('hashchange', reloadIfStale)
+document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && reloadIfStale())
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <App />
