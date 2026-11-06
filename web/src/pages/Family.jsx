@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, call, inr, sendBatch, usd } from '../chain.js'
 import { usePerson } from '../data.js'
-import { byAddress, family, nameOf } from '../family.js'
+import { inviteMessage, ROLES } from '../../../shared/invites.mjs'
+import { byAddress, family, loadMembers, nameOf } from '../family.js'
 import { useApp } from '../main.jsx'
 import { Addr, Callout, Empty, Face, Icon, rel, Skel, Tip, useNow } from '../ui.jsx'
 
@@ -105,6 +106,94 @@ function WillCard({ me, w, now, onCheckIn }) {
   )
 }
 
+/// Invite someone by name and role. They accept with their own wallet, and
+/// then plans and wills can name them.
+function InviteCard({ me }) {
+  const { rerender } = useApp()
+  const [name, setName] = useState('')
+  const [role, setRole] = useState('heir')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+  const [sent, setSent] = useState([])
+  const [copied, setCopied] = useState(null)
+
+  const load = useCallback(async () => {
+    try {
+      const list = await fetch(`/api/invites?from=${me.address}`).then((r) => r.json())
+      setSent(list.sort((a, b) => b.at - a.at))
+      if (list.some((i) => i.acceptedBy && !byAddress(i.acceptedBy))) {
+        await loadMembers()
+        rerender()
+      }
+    } catch {}
+  }, [me.address, rerender])
+  useEffect(() => {
+    load()
+    const t = setInterval(load, 10_000)
+    return () => clearInterval(t)
+  }, [load])
+
+  const create = async () => {
+    setBusy(true)
+    setErr(null)
+    try {
+      const { code } = await fetch('/api/invites/code').then((r) => r.json())
+      const i = { code, from: me.address, fromName: me.name, name: name.trim(), role }
+      const signature = await me.signer.signMessage({ message: inviteMessage(i) })
+      const res = await fetch('/api/invites', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...i, signature }) })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(j.error ?? `error ${res.status}`)
+      setName('')
+      await load()
+    } catch (e) {
+      setErr(e.shortMessage ?? e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  const link = (c) => `${location.origin}/#/join/${c}`
+  const copy = (c) => navigator.clipboard?.writeText(link(c)).then(() => (setCopied(c), setTimeout(() => setCopied(null), 1500)))
+
+  return (
+    <div className="card">
+      <h3 style={{ marginBottom: 6 }}>Invite your family</h3>
+      <p className="tiny muted" style={{ marginBottom: 10 }}>They open the link and accept with their own wallet (MetaMask works), or make one. Then you can name them in a plan or your will.</p>
+      <div className="stack-sm">
+        <input placeholder="Their name" value={name} onChange={(e) => setName(e.target.value)} aria-label="Name of the person to invite" maxLength={40} />
+        <select value={role} onChange={(e) => setRole(e.target.value)} aria-label="Their role">
+          {Object.entries(ROLES).map(([k, v]) => (
+            <option key={k} value={k}>
+              As your {v}
+            </option>
+          ))}
+        </select>
+        <button className="btn small" onClick={create} disabled={busy || !name.trim()}>
+          {busy ? <span className="spinner" /> : <Icon name="link" />} Make an invite link
+        </button>
+        {err && <div className="tiny bad">{err}</div>}
+      </div>
+      {sent.length > 0 && (
+        <div className="stack-sm" style={{ marginTop: 14 }}>
+          {sent.slice(0, 6).map((i) => (
+            <div key={i.code} className="between small" style={{ gap: 8 }}>
+              <span>
+                {i.name} <span className="muted">· {ROLES[i.role]}</span>
+              </span>
+              {i.acceptedBy ? (
+                <span className="badge ok">Joined</span>
+              ) : (
+                <button className="btn ghost small" onClick={() => copy(i.code)} title={link(i.code)}>
+                  <Icon name="copy" /> {copied === i.code ? 'Copied' : 'Copy link'}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Family() {
   const { me, send } = useApp()
   const { data, error, refresh } = usePerson(me.address)
@@ -128,7 +217,7 @@ export default function Family() {
   const getMoney = async () => {
     setFaucet({ busy: true })
     try {
-      const r = await api('/faucet', { address: me.address, eth: me.id === 'dada' })
+      const r = await api('/faucet', { address: me.address, eth: me.id === 'dada' || !!me.injected })
       setFaucet({ ok: `Sent ${r.usdc} test USDC${r.eth !== '0' ? ` and ${r.eth} test ETH` : ''}.` })
       setTimeout(refresh, 2000)
     } catch (e) {
@@ -279,6 +368,7 @@ export default function Family() {
 
         <aside className="stack">
           <WillCard me={me} w={data?.will} now={now} onCheckIn={checkIn} />
+          <InviteCard me={me} />
           <div className="card">
             <h3 style={{ marginBottom: 10 }}>Your family</h3>
             <div className="stack-sm">

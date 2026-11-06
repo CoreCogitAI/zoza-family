@@ -330,7 +330,7 @@ export default function Will({ edit }) {
           <h1>Will</h1>
           <p className="lede">A will that lives inside the wallet. It never moves money while you are around.</p>
         </div>
-        {!data.will && (
+        {!data.will && !me.injected && (
           <a className={`btn ${data.namedIn.length ? '' : 'primary'}`} href="#/will/edit">
             <Icon name="scroll" /> Write my own will
           </a>

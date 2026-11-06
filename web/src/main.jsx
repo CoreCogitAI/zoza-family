@@ -2,7 +2,7 @@ import { createContext, StrictMode, useCallback, useContext, useEffect, useRef, 
 import { createRoot } from 'react-dom/client'
 import { onStats, start as startAnon, stats as anonStats } from './anon.js'
 import { loadConfig, sendBatch } from './chain.js'
-import { choose, current, family } from './family.js'
+import { choose, current, family, loadMembers } from './family.js'
 import { useInbox } from './data.js'
 import { Face, Icon, Modal, rel, SendSteps, useNow } from './ui.jsx'
 import Home from './pages/Home.jsx'
@@ -13,6 +13,7 @@ import Will from './pages/Will.jsx'
 import Gift from './pages/Gift.jsx'
 import Privacy from './pages/Privacy.jsx'
 import How from './pages/How.jsx'
+import Join from './pages/Join.jsx'
 import './styles.css'
 
 const Ctx = createContext(null)
@@ -87,8 +88,8 @@ function PersonSwitcher({ me, setMe }) {
       </button>
       {open && (
         <div className="pop" role="menu">
-          <div className="pop-head">Demo family. Each person has their own wallet on this device.</div>
-          {family.map((p) => (
+          <div className="pop-head">Each person here has their own wallet on this device.</div>
+          {family.filter((p) => p.signer).map((p) => (
             <button key={p.id} className="person" role="menuitem" aria-current={p.id === me.id} onClick={() => (setMe(p.id), setOpen(false))}>
               <Face person={p} />
               <span>
@@ -173,8 +174,12 @@ function App() {
 
   useEffect(() => {
     startAnon()
-    loadConfig().then(setCfg, (e) => setErr(e.message))
+    Promise.all([loadConfig(), loadMembers()]).then(([c]) => setCfg(c), (e) => setErr(e.message))
   }, [])
+  // Someone may have accepted an invite since: refresh the family on each page.
+  useEffect(() => {
+    if (cfg) loadMembers().then(() => bump((x) => x + 1))
+  }, [hash, cfg])
   const setMe = (id) => {
     choose(id)
     setMeId(id)
@@ -193,6 +198,7 @@ function App() {
   else if (page === 'gift') body = <Gift id={Number(arg)} key={`${me.id}-${arg}`} />
   else if (page === 'privacy') body = <Privacy />
   else if (page === 'how') body = <How />
+  else if (page === 'join') body = <Join code={arg} />
   else body = <Home />
 
   return (
