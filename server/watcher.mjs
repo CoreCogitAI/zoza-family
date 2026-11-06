@@ -71,17 +71,32 @@ async function watchWills(now) {
       const hash = await act('openClaim', deployment.will, abi.will, [owner], `Opened a claim on ${owner.slice(0, 8)}'s will`)
       if (hash) state = 'Claim'
     }
+    // Like a yearly life certificate: remind the owner before the quiet period ends.
+    if (state === 'Alive') {
+      const end = Number(w.lastSeen) + Number(w.silence)
+      db.seen.reminded ??= {}
+      if (end - now < Number(w.silence) / 3 && db.seen.reminded[owner] !== Number(w.lastSeen)) {
+        db.seen.reminded[owner] = Number(w.lastSeen)
+        notify([owner], { kind: 'will', owner, title: 'Time to check in', body: `Your will's quiet period ends ${when(end, now)}. Open Zoza and tap "I'm here" so your family is not told you are missing.` })
+      }
+    }
     const prev = db.seen.wills[owner]
     if (prev?.state === state && prev?.version === Number(w.version)) continue
     db.seen.wills[owner] = { state, version: Number(w.version) }
-    if (!prev) continue // first sight: no message
     const heirs = [...w.heirs]
+    if (!prev) {
+      // First sight: only a will signed just now is news to the heirs.
+      if (state === 'Alive' && now - Number(w.lastSeen) < 600) notify(heirs, { kind: 'will', owner, title: 'You are named in a will', body: `${short(owner)} named you in their will. Nothing changes while they are around; you will be told if they go quiet.` })
+      continue
+    }
     const releaseAt = Number(w.claimOpenedAt) + Number(w.window)
     if (state === 'Claim') {
       notify(heirs, { kind: 'will', owner, title: 'A claim has opened', body: `The owner of ${short(owner)} has not checked in for a while. If they do not respond, your share unlocks ${when(releaseAt, now)}.` })
       notify([owner], { kind: 'will', owner, title: 'Are you there?', body: `You have not checked in, so your family has been told. Open Zoza and tap "I'm here" before ${when(releaseAt, now)} to cancel.` })
     } else if (state === 'Alive' && prev.state === 'Claim') {
       notify(heirs, { kind: 'will', owner, title: 'All is well', body: `${short(owner)} checked in. The claim is cancelled.` })
+    } else if (state === 'Alive' && prev.version !== Number(w.version)) {
+      notify(heirs, { kind: 'will', owner, title: 'You are named in a will', body: `${short(owner)} named you in their will. Nothing changes while they are around; you will be told if they go quiet.` })
     } else if (state === 'Released') {
       notify(heirs, { kind: 'will', owner, title: 'Your share is ready', body: `You can now receive your share from ${short(owner)}'s wallet.` })
     }

@@ -101,6 +101,9 @@ function WillCard({ me, w, now, onCheckIn }) {
             </div>
             <div className="tiny muted">
               {w.state === 'Alive' && `A claim can only open ${rel(w.at, now)} if you stay silent.`}
+              {w.state === 'Alive' && me.injected && now - Number(w.lastSeen) > Number(w.silence) / 3 && (
+                <span style={{ color: "var(--warn)" }}> It has been a while: tap “I'm here” (a small transaction) so your quiet period starts again.</span>
+              )}
               {w.state === 'Silent' && 'You have been silent long enough that a claim can open.'}
               {w.state === 'Claim' && `Your family has been told. Shares unlock ${rel(w.at, now)} unless you check in.`}
               {w.state === 'Released' && 'Your heirs can now take their shares.'}
@@ -350,7 +353,8 @@ export default function Family() {
   // The app checks in for you when you open it, so silence means silence.
   useEffect(() => {
     const w = data?.will
-    if (!w || data.stale || autoChecked.current || w.state !== 'Alive') return
+    // A connected wallet would pop up a transaction, so it gets a reminder instead.
+    if (!w || data.stale || autoChecked.current || w.state !== 'Alive' || me.injected) return
     const silence = Number(w.silence)
     if (now - Number(w.lastSeen) > silence / 3) {
       autoChecked.current = true
@@ -390,7 +394,7 @@ export default function Family() {
               {me.injected ? (
                 <span className="badge neutral">
                   Connected wallet
-                  <Tip>Your own wallet. It can save into plans, give gifts and receive what is left to you. It pays its own small gas fees. Writing a will needs a wallet made by Zoza Family.</Tip>
+                  <Tip>Your own wallet. It can save into plans, give gifts and receive what is left to you. It pays its own small gas fees. Its will pulls through a USDC permission instead of Calibur keys.</Tip>
                 </span>
               ) : data?.delegated ? (
                 <span className="badge guard">

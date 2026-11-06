@@ -1,18 +1,37 @@
-import { useEffect, useState } from 'react'
-import { encodeFunctionData, erc20Abi, zeroAddress } from 'viem'
+import { useState } from 'react'
+import { encodeFunctionData, erc20Abi, maxUint256, zeroAddress } from 'viem'
 import { addGuardedKey, keyHashOf } from '../../../shared/calibur.mjs'
 import { abi, call, config, inr, usd } from '../chain.js'
 import { usePerson } from '../data.js'
-import { byAddress, demoTime, family, nameOf, signOut } from '../family.js'
+import { byAddress, demoTime, family, nameOf } from '../family.js'
 import { go, useApp } from '../main.jsx'
 import { NeedFamily } from './PlanNew.jsx'
 import { Callout, dateOf, Empty, Face, Icon, rel, Tip, useNow } from '../ui.jsx'
 
 const PERIODS = {
   demo: { silence: [[90, '90 seconds'], [180, '3 minutes']], window: [[45, '45 seconds'], [90, '90 seconds']] },
-  real: { silence: [[30 * 86400, '30 days'], [60 * 86400, '60 days'], [90 * 86400, '90 days']], window: [[7 * 86400, '7 days'], [14 * 86400, '14 days'], [30 * 86400, '30 days']] },
+  real: {
+    silence: [[180 * 86400, '6 months'], [365 * 86400, '1 year'], [90 * 86400, '3 months']],
+    window: [[30 * 86400, '30 days'], [60 * 86400, '60 days'], [90 * 86400, '90 days']],
+  },
 }
-const human = (s) => (s < 120 ? `${s} seconds` : s < 7200 ? `${Math.round(s / 60)} minutes` : `${Math.round(s / 86400)} days`)
+const DAY = 86400
+const human = (s) =>
+  s < 120 ? `${s} seconds`
+  : s < 7200 ? `${Math.round(s / 60)} minutes`
+  : s % (365 * DAY) === 0 ? (s === 365 * DAY ? '1 year' : `${s / (365 * DAY)} years`)
+  : s >= 90 * DAY && s % (30 * DAY) === 0 ? `${s / (30 * DAY)} months`
+  : `${Math.round(s / DAY)} days`
+const revokeKeys = (heirs) => heirs.map((h) => ({ to: zeroAddress, data: encodeFunctionData({ abi: abi.calibur, functionName: 'revoke', args: [keyHashOf(h)] }) }))
+
+/// What a real will needs too. This one only moves what is in this wallet.
+function LegalNote() {
+  return (
+    <Callout tone="info">
+      <b>This works alongside a legal will, not instead of it.</b> In India your property passes by a written will, signed by you and two witnesses (registering it is optional), or else by succession law. This on-chain will only decides the money in this wallet. Mention the wallet in your written will, and tell your executor that it exists.
+    </Callout>
+  )
+}
 
 function Timeline({ state }) {
   const order = ['Alive', 'Silent', 'Claim', 'Released']
@@ -36,33 +55,6 @@ function Timeline({ state }) {
   )
 }
 
-/// A browser wallet such as MetaMask will not sign an EIP-7702 upgrade to
-/// Calibur for a website, so it cannot hold the will's hook.
-function NeedLocalWallet() {
-  const { setMe } = useApp()
-  const switchWallet = () => {
-    signOut()
-    setMe(null)
-    go('/')
-  }
-  return (
-    <div className="wizard">
-      <Callout tone="info">
-        Writing a will needs a wallet made by Zoza Family. The will is a Calibur hook inside your wallet, and MetaMask won't let a website upgrade it to Calibur. You can still be named in someone's will and receive your share.
-      </Callout>
-      <div className="row" style={{ marginTop: 16, gap: 10 }}>
-        <button className="btn primary" onClick={switchWallet}>
-          <Icon name="plus" /> Make a wallet in this browser
-        </button>
-        <a className="btn" href="#/family">
-          <Icon name="back" /> Back to my family
-        </a>
-      </div>
-      <p className="tiny muted" style={{ marginTop: 10 }}>This signs you out of MetaMask here. You can connect it again at any time.</p>
-    </div>
-  )
-}
-
 function Editor({ me, data, send, refresh }) {
   const demo = demoTime()
   const P = PERIODS[demo ? 'demo' : 'real']
@@ -74,6 +66,8 @@ function Editor({ me, data, send, refresh }) {
   const [silence, setSilence] = useState(existing ? Number(existing.silence) : P.silence[0][0])
   const [windowS, setWindowS] = useState(existing ? Number(existing.window) : P.window[0][0])
   const [eth, setEth] = useState(existing ? existing.tokens.includes(zeroAddress) : false)
+  // MetaMask cannot hold Calibur keys, so its will pulls through a USDC allowance.
+  const pull = !!me.injected
   const ids = Object.keys(picked)
   const sum = ids.reduce((a, k) => a + Number(picked[k]), 0)
 
@@ -92,22 +86,23 @@ function Editor({ me, data, send, refresh }) {
   const submit = async () => {
     const heirs = ids.map((id) => family.find((p) => p.id === id).address)
     const shares = ids.map((id) => Math.round(Number(picked[id]) * 100))
-    const tokens = [config.usdc, ...(eth ? [zeroAddress] : [])]
+    const tokens = [config.usdc, ...(eth && !pull ? [zeroAddress] : [])]
     const calls = []
-    // Each heir gets a Calibur key on this wallet that only our hook can unlock.
-    for (const h of heirs) calls.push(...addGuardedKey(h, config.will))
-    // Heirs taken out of the will lose their key as well.
-    for (const old of existing?.heirs ?? []) {
-      if (!heirs.some((h) => h.toLowerCase() === old.toLowerCase())) {
-        calls.push({ to: zeroAddress, data: encodeFunctionData({ abi: abi.calibur, functionName: 'revoke', args: [keyHashOf(old)] }) })
-      }
+    if (pull) {
+      // The will may move USDC only after release, and only each heir's share.
+      if (!(data?.willAllowance >= maxUint256 / 2n)) calls.push(call.usdc('approve', [config.will, maxUint256]))
+      calls.push(call.will('makeWillWithAllowance', [heirs, shares, tokens, silence, windowS]))
+    } else {
+      // Each heir gets a Calibur key on this wallet that only our hook can unlock.
+      for (const h of heirs) calls.push(...addGuardedKey(h, config.will))
+      // Heirs taken out of the will lose their key as well.
+      calls.push(...revokeKeys((existing?.heirs ?? []).filter((old) => !heirs.some((h) => h.toLowerCase() === old.toLowerCase()))))
+      calls.push(call.will('makeWill', [heirs, shares, tokens, silence, windowS]))
     }
-    calls.push(call.will('makeWill', [heirs, shares, tokens, silence, windowS]))
     const r = await send({ title: existing ? 'Update my will' : 'Sign my will', signer: me.signer, calls, after: refresh })
     if (r) setTimeout(() => go('/will'), 800)
   }
 
-  if (me.injected) return <NeedLocalWallet />
   if (!candidates.length) return <NeedFamily what="write a will" need="at least one heir" />
   return (
     <div className="wizard">
@@ -153,8 +148,8 @@ function Editor({ me, data, send, refresh }) {
         <div className="fields">
           <label className="field">
             <span className="field-label">
-              Silence before a claim can open
-              <Tip>Every time you open Zoza, it checks in for you. Only after this long with no check-in can anyone open a claim.</Tip>
+              Quiet period
+              <Tip>{pull ? 'Tap “I\'m here” now and then, like a yearly life certificate. We remind you before this runs out.' : 'Every time you open Zoza, it checks in for you.'} Only after this long with no check-in can a claim open.</Tip>
             </span>
             <select value={silence} onChange={(e) => setSilence(Number(e.target.value))}>
               {P.silence.map(([v, l]) => (
@@ -164,8 +159,8 @@ function Editor({ me, data, send, refresh }) {
           </label>
           <label className="field">
             <span className="field-label">
-              Time to cancel a claim
-              <Tip>When a claim opens, you and your heirs are told. Tap “I'm here” within this time and nothing happens.</Tip>
+              Notice period
+              <Tip>When a claim opens, you and your heirs are told, like a public notice before an estate is settled. Tap “I'm here” within this time and nothing happens.</Tip>
             </span>
             <select value={windowS} onChange={(e) => setWindowS(Number(e.target.value))}>
               {P.window.map(([v, l]) => (
@@ -175,21 +170,37 @@ function Editor({ me, data, send, refresh }) {
           </label>
         </div>
         {demo && <span className="field-hint">Demo timing is on, so seconds stand in for days. Turn it off in a new savings plan to use real periods.</span>}
-        <label className="check">
-          <input type="checkbox" checked={eth} onChange={(e) => setEth(e.target.checked)} /> Include ETH as well as USDC
-        </label>
+        {pull ? (
+          <span className="field-hint">Covers the USDC in this wallet. ETH can't be left through a connected wallet's will.</span>
+        ) : (
+          <label className="check">
+            <input type="checkbox" checked={eth} onChange={(e) => setEth(e.target.checked)} /> Include ETH as well as USDC
+          </label>
+        )}
       </div>
 
       <div className="card" style={{ marginTop: 16 }}>
         <h3 style={{ marginBottom: 8 }}>What you are signing</h3>
         <ul className="promise-list">
-          <li className="y"><Icon name="check" />Each heir gets a key on your wallet that does nothing while you are around.</li>
-          <li className="y"><Icon name="check" />Only after {human(silence)} without a check-in, plus {human(windowS)} nobody cancels, can each heir take their own share.</li>
+          {pull ? (
+            <li className="y"><Icon name="check" />Your wallet lets the Zoza Family Will contract move your USDC, but the contract only pays an heir after the steps below.</li>
+          ) : (
+            <li className="y"><Icon name="check" />Each heir gets a key on your wallet that does nothing while you are around.</li>
+          )}
+          <li className="y"><Icon name="check" />Only after {human(silence)} without a check-in, plus a {human(windowS)} notice period nobody cancels, can each heir take their own share.</li>
           <li className="y"><Icon name="check" />An heir can only send their share to their own wallet. They cannot take more, or anyone else's.</li>
           <li className="y"><Icon name="check" />You can change or cancel this will any time.</li>
           <li className="n"><Icon name="x" />Zoza and the watcher cannot move your money. They can only open the claim window.</li>
         </ul>
         {!data?.delegated && !me.injected && <Callout tone="guard">This also upgrades your wallet to Uniswap's Calibur smart wallet. Same address, and Zoza pays the fee.</Callout>}
+        {pull && (
+          <Callout tone="info">
+            MetaMask will ask you to approve {data?.willAllowance >= maxUint256 / 2n ? '1 transaction' : '2 transactions: the USDC permission, then the will'}. Your wallet pays a small Sepolia gas fee. Cancelling the will also takes the permission back.
+          </Callout>
+        )}
+      </div>
+      <div style={{ marginTop: 16 }}>
+        <LegalNote />
       </div>
 
       <div className="between" style={{ marginTop: 18 }}>
@@ -266,13 +277,25 @@ function OwnerView({ me, data, now, send, refresh }) {
           </table>
         </div>
         <dl className="kv" style={{ marginTop: 14 }}>
-          <dt>Silence before a claim</dt>
+          <dt>Quiet period</dt>
           <dd>{human(Number(w.silence))}</dd>
-          <dt>Time to cancel</dt>
+          <dt>Notice period</dt>
           <dd>{human(Number(w.window))}</dd>
           <dt>Covers</dt>
           <dd>{w.tokens.map((t) => (t === zeroAddress ? 'ETH' : 'USDC')).join(' and ')}</dd>
+          <dt>How heirs receive</dt>
+          <dd>{w.pull ? 'Each heir pulls their share through your USDC permission' : 'A guarded key on your Calibur wallet'}</dd>
         </dl>
+        {w.pull && data.willAllowance < balance && (
+          <div style={{ marginTop: 12 }}>
+            <Callout tone="warn">
+              Your USDC permission ({usd(data.willAllowance)}) is less than your balance, so heirs share {usd(data.willAllowance)} USDC, not all of it.{' '}
+              <button className="btn small" onClick={() => send({ title: 'Cover my whole balance', signer: me.signer, calls: [call.usdc('approve', [config.will, maxUint256])], after: refresh })}>
+                Cover my whole balance
+              </button>
+            </Callout>
+          </div>
+        )}
         <div className="row" style={{ marginTop: 16 }}>
           <a className="btn" href="#/will/edit">Change will</a>
           <button
@@ -281,7 +304,7 @@ function OwnerView({ me, data, now, send, refresh }) {
               send({
                 title: 'Cancel my will',
                 signer: me.signer,
-                calls: [...w.heirs.map((h) => ({ to: zeroAddress, data: encodeFunctionData({ abi: abi.calibur, functionName: 'revoke', args: [keyHashOf(h)] }) })), call.will('revokeWill')],
+                calls: w.pull ? [call.will('revokeWill'), call.usdc('approve', [config.will, 0n])] : [...revokeKeys(w.heirs), call.will('revokeWill')],
                 after: refresh,
               })
             }
@@ -297,13 +320,15 @@ function OwnerView({ me, data, now, send, refresh }) {
 function HeirView({ me, n, now, send, refresh }) {
   const owner = byAddress(n.owner)
   const receive = () =>
-    send({
-      title: `Receive your share from ${nameOf(n.owner)}`,
-      signer: me.signer,
-      account: n.owner, // signed by my key on their wallet; their hook checks it
-      calls: [{ to: config.usdc, data: encodeFunctionData({ abi: erc20Abi, functionName: 'transfer', args: [me.address, n.claimable] }) }],
-      after: refresh,
-    })
+    n.will.pull
+      ? send({ title: `Receive your share from ${nameOf(n.owner)}`, signer: me.signer, calls: [call.will('take', [n.owner, config.usdc, n.claimable])], after: refresh })
+      : send({
+          title: `Receive your share from ${nameOf(n.owner)}`,
+          signer: me.signer,
+          account: n.owner, // signed by my key on their wallet; their hook checks it
+          calls: [{ to: config.usdc, data: encodeFunctionData({ abi: erc20Abi, functionName: 'transfer', args: [me.address, n.claimable] }) }],
+          after: refresh,
+        })
   return (
     <div className="card">
       <div className="between" style={{ marginBottom: 14 }}>
@@ -334,10 +359,10 @@ function HeirView({ me, n, now, send, refresh }) {
             </div>
           </Callout>
         )}
-        {n.state === 'Claim' && <Callout tone="warn">A claim is open. If {nameOf(n.owner)} does not check in, your share unlocks {rel(n.at, now)}.</Callout>}
+        {n.state === 'Claim' && <Callout tone="warn">A claim is open and {nameOf(n.owner)} has been told. If they do not check in during the notice period, your share unlocks {rel(n.at, now)}.</Callout>}
         {n.state === 'Released' && (
           <Callout tone="info">
-            {n.claimable > 0n ? `Your share is ready: ${usd(n.claimable)} USDC (${inr(n.claimable)}). It can only go to your own wallet. Zoza pays the fee.` : 'You have received your share.'}
+            {n.claimable > 0n ? `Your share is ready: ${usd(n.claimable)} USDC (${inr(n.claimable)}). It can only go to your own wallet.${me.injected ? ' Your wallet pays a small gas fee.' : ' Zoza pays the fee.'}` : 'You have received your share.'}
           </Callout>
         )}
       </div>
@@ -349,7 +374,6 @@ export default function Will({ edit }) {
   const { me, send } = useApp()
   const { data, refresh } = usePerson(me.address, 8000)
   const now = useNow()
-  useEffect(() => {}, [])
   if (edit) return <Editor me={me} data={data} send={send} refresh={refresh} />
   if (!data) return <p><span className="spinner" /> Reading your will privately…</p>
   return (
@@ -360,7 +384,7 @@ export default function Will({ edit }) {
           <h1>Will</h1>
           <p className="lede">A will that lives inside the wallet. It never moves money while you are around.</p>
         </div>
-        {!data.will && !me.injected && (
+        {!data.will && (
           <a className={`btn ${data.namedIn.length ? '' : 'primary'}`} href="#/will/edit">
             <Icon name="scroll" /> Write my own will
           </a>
@@ -373,7 +397,7 @@ export default function Will({ edit }) {
         ))}
         {!data.will && data.namedIn.length === 0 && (
           <Empty icon="scroll" title="No will yet" action={<a className="btn primary" href="#/will/edit">Write my will</a>}>
-            {me.id === 'priya' ? 'Choose who receives your wallet and in what shares.' : `No will names ${me.name} yet. Switch to Priya to write one.`}
+            Choose who in your family receives this wallet's money, and in what shares. Nothing moves while you are around.
           </Empty>
         )}
       </div>

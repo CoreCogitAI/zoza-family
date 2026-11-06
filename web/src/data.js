@@ -4,7 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { isCalibur } from '../../shared/calibur.mjs'
 import { serverFetch } from './anon.js'
 import { authHeader } from './auth.js'
-import { api, client, config, savings, supplyApr, usdcOf, will } from './chain.js'
+import { erc20Abi } from 'viem'
+import { api, client, config, read, savings, supplyApr, usdcOf, will } from './chain.js'
 
 export const STATES = ['None', 'Alive', 'Silent', 'Claim', 'Released']
 const cacheKey = (a) => `zf.cache.${a.toLowerCase()}`
@@ -19,7 +20,7 @@ async function planBundle(id) {
 }
 
 export async function loadPerson(address) {
-  const [delegated, balance, eth, w, state, moment, named, linked, apr] = await Promise.all([
+  const [delegated, balance, eth, w, state, moment, named, linked, apr, willAllowance] = await Promise.all([
     isCalibur(client, address),
     usdcOf(address),
     client.getBalance({ address }),
@@ -29,6 +30,7 @@ export async function loadPerson(address) {
     will('willsNaming', [address]),
     savings('plansOf', [address]),
     supplyApr().catch(() => null),
+    read(config.usdc, erc20Abi, 'allowance', [address, config.will]), // what an allowance will can pay out
   ])
   const [asParent, asChild, asNominee] = linked
   const ids = [...new Set([...asParent, ...asChild, ...asNominee].map(Number))]
@@ -49,6 +51,7 @@ export async function loadPerson(address) {
   return {
     address,
     delegated,
+    willAllowance,
     balance,
     eth,
     will: w.heirs.length ? { ...w, state: STATES[state], at: Number(moment[1]) } : null,

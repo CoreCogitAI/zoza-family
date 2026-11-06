@@ -7,7 +7,7 @@ Families in India save for a child's studies or wedding every month: recurring d
 - **Savings plans.** A fixed amount is collected each month from the parent's wallet, capped by the contract at one instalment per period. Money paid in is locked until maturity, then goes to the child. Plans can optionally earn Compound III's variable supply rate.
 - **A nominee.** The nominee guards the plan. They can point it to the child's new wallet, and must agree before the parent ends it early. They can never take the money.
 - **Plans that change with life,** as at a bank. The parent can change the nominee, change the monthly amount, or extend the maturity (only later). With the nominee's agreement, the parent can end a plan early, either paying the child now (for fees that cannot wait) or taking the money back. No penalty.
-- **A will in the wallet.** Each heir gets a key on the parent's wallet that does nothing while the parent is around. After a silence period with no check-in, and a cancel window nobody uses, each heir can send only their own share to only their own wallet.
+- **A will in the wallet.** Each heir gets a key on the parent's wallet that does nothing while the parent is around. After a silence period with no check-in, and a cancel window nobody uses, each heir can send only their own share to only their own wallet. A MetaMask or other connected wallet can't take Calibur keys, so its will works through a USDC allowance instead: after the same quiet period and notice period, each heir pulls only their own share. The site reminds the owner to check in before the quiet period ends, and says plainly that this works alongside a legal will, not instead of one.
 - **Gifts from family.** A grandparent pays in ETH. The Uniswap API swaps it to USDC inside the same signed batch, and the plan receives at least the quoted minimum.
 - **Family joins with their own wallets.** The parent sends an invite link. The heir, child or nominee opens it and accepts by signing with MetaMask or any browser wallet, or makes a wallet there. Plans and wills only name addresses whose owners signed. An heir with MetaMask claims their share gaslessly. Anyone can also connect a wallet from the person menu to save into plans or give gifts, paying their own small gas. Writing a will needs the Zoza wallet.
 - **Private by default.** Every blockchain read the website makes, and every call to its own server, goes through Anon-RPC. Writes are signed in the browser and sent by a relayer, so families never need ETH for gas.
@@ -51,13 +51,14 @@ The first thing a family member signs upgrades their own address to Calibur thro
 | What | Where |
 |---|---|
 | Calibur, Uniswap's EIP-7702 smart wallet: every family wallet delegates to it | [shared/calibur.mjs](shared/calibur.mjs), [server/relay.mjs#L98](server/relay.mjs#L98) |
-| A Calibur execution hook (`beforeExecute`) guarding heir keys | [src/FamilyWill.sol#L164](src/FamilyWill.sol#L164) |
-| The will refuses heir keys that lack the hook, or are admin keys | [src/FamilyWill.sol#L103](src/FamilyWill.sol#L103) |
+| A Calibur execution hook (`beforeExecute`) guarding heir keys | [src/FamilyWill.sol#L199](src/FamilyWill.sol#L199) |
+| A will for wallets without Calibur: heirs pull their share through an allowance | [src/FamilyWill.sol#L230](src/FamilyWill.sol#L230) |
+| The will refuses heir keys that lack the hook, or are admin keys | [src/FamilyWill.sol#L136](src/FamilyWill.sol#L136) |
 | Hook address mined for Calibur's permission bits (BEFORE_EXECUTE only) | [script/Deploy.s.sol](script/Deploy.s.sol) |
 | Calibur `SignedBatchedCall` signing (EIP-712, salted domain) | [shared/calibur.mjs#L97](shared/calibur.mjs#L97) |
 | Uniswap API quotes for gifts (routes through v4 pools on Sepolia) | [server/uniswap.mjs#L11](server/uniswap.mjs#L11) |
 | The Universal Router call from the API, batched with approve + deposit | [web/src/pages/Gift.jsx#L49](web/src/pages/Gift.jsx#L49) |
-| Fork tests against the deployed Calibur | [test/FamilyWill.t.sol](test/FamilyWill.t.sol) |
+| Fork tests against the deployed Calibur | [test/FamilyWill.t.sol](test/FamilyWill.t.sol), [test/FamilyWillAllowance.t.sol](test/FamilyWillAllowance.t.sol) |
 
 **Anon-RPC.** The website builds viem's client on an EIP-1193 provider backed by `AnonRpcWorker` ([web/src/anon.js#L112](web/src/anon.js#L112), [web/src/chain.js#L25](web/src/chain.js#L25)). The Nox mixnet is the default (its specifier is on Sepolia); Tor and Nym can be chosen on the Privacy page. Reads are batched with multicall, so one private request carries a whole screen.
 
@@ -98,7 +99,7 @@ cre workflow simulate family-watcher --target staging-settings --broadcast
 
 ## What is tested
 
-- **Contracts:** 51 Foundry tests on a Sepolia fork, against the deployed Calibur, Compound III and Circle USDC. They cover heirs acting early, taking more than a share, paying someone else, using unlisted tokens, calling anything but `transfer`, changing the wallet's keys, revoked and replaced wills, missed instalments, one pull per period, allowance caps, nominee rights, changing the nominee, amount and maturity, paying the child early, donation attacks and fair interest between plans.
+- **Contracts:** 64 Foundry tests on a Sepolia fork, against the deployed Calibur, Compound III and Circle USDC. They cover heirs acting early, taking more than a share, paying someone else, using unlisted tokens, calling anything but `transfer`, changing the wallet's keys, revoked and replaced wills, missed instalments, one pull per period, allowance caps, nominee rights, changing the nominee, amount and maturity, paying the child early, donation attacks and fair interest between plans.
 - **Live, end to end** ([server/e2e.mjs](server/e2e.mjs)): a fresh family each run, through the real server and Sepolia. One gasless transaction delegates the parent to Calibur, writes her will and opens a plan. The relayer refuses outside calls. The watcher collects. The parent tops up and the monthly mandate is left intact. A grandparent's ETH gift goes through the Uniswap API into the plan. A claim opens after silence and is cancelled by "I'm here". Heirs are refused early, over their share and to someone else, then each takes their exact share. The nominee moves the plan to a new wallet, and the plan matures to it.
 - **In the browser:** the same flows driven through the website in headless Chrome, signing in the page.
 
@@ -110,7 +111,7 @@ cre workflow simulate family-watcher --target staging-settings --broadcast
 - Changing the nominee drops any agreement to end early, makes ending early wait one period, and tells the old nominee, the new nominee and the child. It is a delay and a notice, not a veto: a parent who replaces the nominee can end the plan early after that period. The parent can also point the plan to another wallet as the child, as the nominee can.
 - `approve` replaces an allowance, so the website always approves the existing allowance plus the new amount. A top-up, a gift or a second plan never cancels another plan's mandate.
 - The watcher and the relayer cannot move money. The watcher's actions are permissionless, and each contract checks its own timing and amounts.
-- A will's shares are of the balance when the first share of each token is paid. The parent can spend freely before that.
+- A will's shares are of the balance when the first share of each token is paid (for an allowance will, the smaller of the balance and the allowance). The parent can spend freely before that.
 - The Compact (Uniswap) was considered for locking savings, but its owner can always force-withdraw after the reset period (at most 30 days), which does not fit an 18-year promise. Plans therefore lock in FamilySavings itself.
 - Not audited. Test money only.
 - Automation defaults to `WATCHER=cre`. Use `WATCHER=server` only as a local fallback; it uses `KEEPER_KEY`, while the default CRE mode submits reports through `FamilyWatcher` and the server only observes and notifies.
