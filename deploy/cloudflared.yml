@@ -1,0 +1,6 @@
+# The tunnel's routes; the tunnel itself comes from TUNNEL_TOKEN.
+protocol: http2
+ingress:
+  - hostname: eth.zoza.world
+    service: http://127.0.0.1:8790
+  - service: http_status:404

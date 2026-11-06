@@ -167,7 +167,7 @@ createServer(async (req, res) => {
     if (status === 500) console.error(e)
     send(res, status, { error: status === 500 ? short(e) : e.message })
   }
-}).listen(PORT, '127.0.0.1', () => {
+}).listen(PORT, process.env.HOST ?? '127.0.0.1', () => {
   console.log(`Zoza Family on http://127.0.0.1:${PORT}  chain ${CHAIN_ID}  watcher ${status.mode}`)
   if (process.env.WATCHER !== 'off') start()
 })

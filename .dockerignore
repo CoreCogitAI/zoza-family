@@ -1,0 +1,15 @@
+.env
+.env.*
+**/node_modules
+server/data
+web/dist
+lib
+out
+cache
+broadcast
+cre
+test
+src
+script
+.git
+*.log
