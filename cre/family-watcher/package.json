@@ -1,0 +1,9 @@
+{
+  "name": "zoza-family-watcher",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@chainlink/cre-sdk": "1.23.0",
+    "viem": "2.57.14"
+  }
+}

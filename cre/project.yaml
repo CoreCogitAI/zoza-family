@@ -1,0 +1,5 @@
+# Chainlink CRE project: the Zoza Family watcher.
+staging-settings:
+  rpcs:
+    - chain-name: ethereum-testnet-sepolia
+      url: https://ethereum-sepolia-rpc.publicnode.com
