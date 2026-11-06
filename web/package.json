@@ -1,0 +1,19 @@
+{
+  "name": "zoza-family-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@anon-rpc/browser-harness": "0.4.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "viem": "2.57.14"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "6.1.2",
+    "vite": "8.3.5"
+  }
+}
