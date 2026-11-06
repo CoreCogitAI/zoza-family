@@ -148,7 +148,7 @@ createServer(async (req, res) => {
   // LOG_API=1 prints one line per API call: no IPs, no query, addresses cut short.
   if (process.env.LOG_API === '1') {
     const t = Date.now()
-    res.on('finish', () => console.log(`${new Date().toISOString().slice(11, 19)} ${req.method} ${url.pathname.replace(/0x([0-9a-fA-F]{4})[0-9a-fA-F]{36}/, '0x$1…')} ${res.statusCode} ${Date.now() - t}ms${req.headers['x-zoza-auth'] ? ' pass' : ''}`))
+    res.on('finish', () => console.log(`${new Date().toISOString().slice(11, 19)} ${req.method} ${url.pathname.replace(/0x([0-9a-fA-F]{4})[0-9a-fA-F]{36}/, '0x$1…')} ${res.statusCode} ${Date.now() - t}ms${req.headers['x-zoza-auth'] ? ' pass' : ''}${url.searchParams.get('from') ? ' from ' + url.searchParams.get('from').split(',').map((a) => a.slice(0, 6)).join(',') : ''}`))
   }
   try {
     await api(req, res, url)
