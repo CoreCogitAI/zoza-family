@@ -4,7 +4,7 @@
   "savings": "0x399146CEA8Bd31776f013f10817a79284767d6f8",
   "will": "0xd65f7aF469cE8352c23a91Ea0989819C9b1AA008",
   "watcher": "0x3599f1f08e7cb09d1D40f70CB312a4B8546325dF",
-  "notifyUrl": "http://127.0.0.1:8790/api/notify",
-  "ownersUrl": "http://127.0.0.1:8790/api/owners",
+  "notifyUrl": "https://eth.zoza.world/api/notify",
+  "ownersUrl": "https://eth.zoza.world/api/owners",
   "gasLimit": "3000000"
 }

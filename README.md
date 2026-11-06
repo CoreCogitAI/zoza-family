@@ -36,7 +36,7 @@ Parent's EOA ──EIP-7702──> Uniswap Calibur (same address, same money)
    ├─ approve(FamilySavings, instalment × months)     the mandate
    └─ FamilySavings.createPlan(child, nominee, ...)   the plan
 
-Watcher (Chainlink CRE by default; the server can be an explicit local fallback) ── every minute, anyone may call:
+Watcher (the Chainlink CRE workflow, or the hosted server's watcher) ── every minute, anyone may call:
    collect(id)       one instalment per period, or "missed" if the wallet is short
    openClaim(owner)  only after the silence period
    release(id)       only at maturity, only to the child
@@ -82,7 +82,7 @@ cp .env.example .env    # CRE_ETH_PRIVATE_KEY: a funded Sepolia test key; NOTIFY
 cre workflow simulate family-watcher --target staging-settings --broadcast
 ```
 
-`WATCHER=cre` is the default. The server reads chain state and turns chain changes into messages, while CRE submits the report; the local `WATCHER=server` mode is retained as a fallback and uses `KEEPER_KEY` to submit actions directly.
+**What runs where today.** The CRE workflow is built and runs with `cre workflow simulate --broadcast` against the live Sepolia contracts and the live site (`https://eth.zoza.world/api/owners` and `/api/notify`). It is not deployed to the CRE network yet, and FamilyWatcher still trusts the MockKeystoneForwarder (see [ISSUES.md](ISSUES.md)). So the hosted site at eth.zoza.world runs with `WATCHER=server`: its own watcher sends the same three permissionless calls with `KEEPER_KEY`, and you can check this at `/api/watcher`. With `WATCHER=cre` the server only observes and notifies, and CRE submits the report.
 
 **Compound III.** Earning plans supply USDC to the Sepolia USDC market ([src/FamilySavings.sol#L290](src/FamilySavings.sol#L290)) and withdraw straight to the child at maturity ([#L306](src/FamilySavings.sol#L306)). Each plan owns shares of the contract's Compound balance, with a virtual offset against donation attacks ([#L314](src/FamilySavings.sol#L314)).
 
@@ -114,7 +114,7 @@ cre workflow simulate family-watcher --target staging-settings --broadcast
 - A will's shares are of the balance when the first share of each token is paid (for an allowance will, the smaller of the balance and the allowance). The parent can spend freely before that.
 - The Compact (Uniswap) was considered for locking savings, but its owner can always force-withdraw after the reset period (at most 30 days), which does not fit an 18-year promise. Plans therefore lock in FamilySavings itself.
 - Not audited. Test money only.
-- Automation defaults to `WATCHER=cre`. Use `WATCHER=server` only as a local fallback; it uses `KEEPER_KEY`, while the default CRE mode submits reports through `FamilyWatcher` and the server only observes and notifies.
+- Automation: the code defaults to `WATCHER=cre`, where CRE submits reports through `FamilyWatcher` and the server only observes and notifies. The hosted site uses `WATCHER=server` until the workflow is deployed to CRE; that mode uses `KEEPER_KEY`. Every action is permissionless either way.
 
 ## Layout
 

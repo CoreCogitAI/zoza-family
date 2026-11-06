@@ -25,6 +25,8 @@ export function notify(to, msg) {
   const at = Date.now()
   for (const who of new Set(to.map((a) => a.toLowerCase()))) {
     const box = (db.inbox[who] ??= [])
+    // CRE and the server's watcher can both tell someone the same news; keep one.
+    if (box.some((m) => m.title === msg.title && at - m.at < 10 * 60_000 && (m.via === 'cre') !== (msg.via === 'cre'))) continue
     box.unshift({ id: `${at}-${Math.random().toString(36).slice(2, 8)}`, at, ...msg })
     box.length = Math.min(box.length, 100)
   }
