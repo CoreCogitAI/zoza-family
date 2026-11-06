@@ -95,15 +95,22 @@ export function saveSelf(s) {
 }
 
 /// Use a browser wallet (one from wallets()) as "you".
-export async function connectWallet(w) {
+/// `step` names what the wallet is asking, since its prompt may sit in a side panel.
+export async function connectWallet(w, step = () => {}) {
   const client = createWalletClient({ chain: sepolia, transport: custom(w.provider) })
+  step(`Approve the connection in ${w.name}.`)
   const [address] = await client.requestAddresses()
-  await client.switchChain({ id: sepolia.id }).catch(() => {})
+  step(`Allow ${w.name} to switch to the Sepolia test network.`)
+  // A wallet that never answers the switch must not hold up signing in.
+  await Promise.race([client.switchChain({ id: sepolia.id }).catch(() => {}), new Promise((ok) => setTimeout(ok, 15_000))])
   set(MODE, 'wallet')
   saveSelf({ kind: 'injected', wallet: w.id, address: getAddress(address), name: loadSelf()?.name ?? 'You', role: 'family', inviter: null })
-  // One signature now, so the inbox and family list can be read for a week.
-  await tokenFor(self(), true).catch(() => null)
   choose('self')
+  // One signature, so the inbox and family list can be read for a week. Not
+  // awaited: the page opens now, and the invite card asks again if it is skipped.
+  tokenFor(self(), true)
+    .then(() => loadMembers())
+    .catch(() => null)
 }
 
 /// A key made in this browser, for someone without a wallet.
@@ -147,7 +154,7 @@ export function injectedSigner(address, walletId) {
   }
 }
 
-/// Follow the wallet: a different account becomes "you"; none signs out.
+/// Follow the wallet: a different account becomes "you".
 export function watchWallet(onChange) {
   const s = loadSelf()
   if (s?.kind !== 'injected') return () => {}
@@ -156,8 +163,10 @@ export function watchWallet(onChange) {
   const handler = (accounts) => {
     const now = loadSelf()
     if (!now || now.kind !== 'injected') return
-    if (!accounts?.length) signOut()
-    else if (getAddress(accounts[0]) !== getAddress(now.address)) saveSelf({ ...now, address: getAddress(accounts[0]), name: 'You', inviter: null })
+    // No accounts also means the wallet locked itself; keep the session, since
+    // reads need no wallet and a write asks it to unlock. Sign out is in the menu.
+    if (!accounts?.length) return
+    if (getAddress(accounts[0]) !== getAddress(now.address)) saveSelf({ ...now, address: getAddress(accounts[0]), name: 'You', inviter: null })
     else return
     onChange()
   }

@@ -9,12 +9,14 @@ export default function Welcome({ next = '/family' }) {
   const { setMe } = useApp()
   const [list, setList] = useState(wallets())
   const [busy, setBusy] = useState(null)
+  const [step, setStep] = useState(null)
   const [err, setErr] = useState(null)
   const [name, setName] = useState('')
   useEffect(() => onWallets(() => setList(wallets())), [])
 
-  const done = async (id) => {
-    await loadMembers()
+  // The family list follows over the mixnet; the page does not wait for it.
+  const done = (id) => {
+    loadMembers().catch(() => {})
     setMe(id)
     go(next)
   }
@@ -22,11 +24,14 @@ export default function Welcome({ next = '/family' }) {
     setBusy(w.id)
     setErr(null)
     try {
-      await connectWallet(w)
-      await done('self')
+      await connectWallet(w, setStep)
+      done('self')
     } catch (e) {
-      setErr(e.shortMessage ?? e.message)
+      const pending = e.code === -32002 || /already pending/i.test(e.message ?? '')
+      setErr(pending ? `${w.name} already has a request waiting. Open ${w.name} from the browser toolbar and answer it.` : e.shortMessage ?? e.message)
       setBusy(null)
+    } finally {
+      setStep(null)
     }
   }
 
@@ -56,6 +61,14 @@ export default function Welcome({ next = '/family' }) {
         ) : (
           <Callout tone="info">
             No wallet found in this browser. Install <a href="https://metamask.io/download/" target="_blank" rel="noreferrer">MetaMask</a> or another wallet, then reload this page. Or make a wallet below.
+          </Callout>
+        )}
+        {busy && step && (
+          <Callout tone="info">
+            {step} If no window opened, click the {list.find((w) => w.id === busy)?.name ?? 'wallet'} icon in the browser toolbar.{' '}
+            <button className="btn ghost small" onClick={() => (setBusy(null), setStep(null))}>
+              Cancel
+            </button>
           </Callout>
         )}
         {err && <Callout tone="bad">{err}</Callout>}
