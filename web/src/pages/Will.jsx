@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { encodeFunctionData, erc20Abi, maxUint256, zeroAddress } from 'viem'
 import { addGuardedKey, keyHashOf } from '../../../shared/calibur.mjs'
-import { abi, call, config, inr, usd } from '../chain.js'
+import { abi, call, config, usd } from '../chain.js'
+import { fxOf } from '../currency.js'
 import { usePerson } from '../data.js'
 import { byAddress, demoTime, family, nameOf, setDemoTime } from '../family.js'
 import { go, useApp } from '../main.jsx'
@@ -287,7 +288,7 @@ function OwnerView({ me, data, now, send, refresh }) {
                   <td className="num">{w.shares[i] / 100}%</td>
                   <td className="num">
                     {usd((balance * BigInt(w.shares[i])) / 10000n)} USDC
-                    <div className="tiny muted">{inr((balance * BigInt(w.shares[i])) / 10000n)}</div>
+                    <div className="tiny muted">{fxOf((balance * BigInt(w.shares[i])) / 10000n)}</div>
                   </td>
                 </tr>
               ))}
@@ -380,7 +381,7 @@ function HeirView({ me, n, now, send, refresh }) {
         {n.state === 'Claim' && <Callout tone="warn">A claim is open and {nameOf(n.owner)} has been told. If they do not check in during the notice period, your share unlocks {rel(n.at, now)}.</Callout>}
         {n.state === 'Released' && (
           <Callout tone="info">
-            {n.claimable > 0n ? `Your share is ready: ${usd(n.claimable)} USDC (${inr(n.claimable)}). It can only go to your own wallet.${me.injected ? ' Your wallet pays a small gas fee.' : ' Zoza pays the fee.'}` : 'You have received your share.'}
+            {n.claimable > 0n ? `Your share is ready: ${usd(n.claimable)} USDC${fxOf(n.claimable) ? ` (${fxOf(n.claimable)})` : ''}. It can only go to your own wallet.${me.injected ? ' Your wallet pays a small gas fee.' : ' Zoza pays the fee.'}` : 'You have received your share.'}
           </Callout>
         )}
       </div>

@@ -118,8 +118,6 @@ export function plainError(msg) {
 
 export const usd = (v, d = 2) => Number(formatUnits(BigInt(v ?? 0), 6)).toLocaleString('en-IN', { minimumFractionDigits: d, maximumFractionDigits: d })
 // For illustration only; the plans hold US dollars (USDC).
-export const INR_PER_USD = 88
-export const inr = (v) => '₹' + Math.round(Number(formatUnits(BigInt(v ?? 0), 6)) * INR_PER_USD).toLocaleString('en-IN')
 export const txUrl = (h) => `${config.explorer}/tx/${h}`
 export const addrUrl = (a) => `${config.explorer}/address/${a}`
 

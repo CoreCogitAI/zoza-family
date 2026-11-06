@@ -5,6 +5,7 @@ import { createServer } from 'node:http'
 import { extname, join, normalize } from 'node:path'
 import { getAddress, isAddress } from 'viem'
 import { CALIBUR } from '../shared/calibur.mjs'
+import { rates } from './fx.mjs'
 import { CHAIN_ID, deployment, EXPLORER, keeper, PORT, PUBLIC_RPC_URL, relayer, root, treasury, UNIVERSAL_ROUTER } from './config.mjs'
 import { faucet, FaucetError } from './faucet.mjs'
 import { relay, RelayError, short } from './relay.mjs'
@@ -62,6 +63,7 @@ async function api(req, res, url) {
     return send(res, 200, {})
   }
   if (req.method === 'GET' && path === '/api/watcher') return send(res, 200, status)
+  if (req.method === 'GET' && path === '/api/fx') return send(res, 200, await rates())
   // Owners with a will, for the Chainlink CRE workflow to check.
   if (req.method === 'GET' && path === '/api/owners') return send(res, 200, db.owners)
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { formatEther, parseEther } from 'viem'
-import { allowanceOf, api, call, config, inr, usd } from '../chain.js'
+import { allowanceOf, api, call, config, usd } from '../chain.js'
+import { fxOf, withFx } from '../currency.js'
 import { usePerson, usePlan } from '../data.js'
 import { byAddress, nameOf } from '../family.js'
 import { useApp } from '../main.jsx'
@@ -93,7 +94,7 @@ export default function Gift({ id }) {
             <div className="summary">
               <div className="row-s">
                 <span>{nameOf(plan.child)}'s plan receives at least</span>
-                <span>{quote ? `${usd(quote.minOut)} USDC · ${inr(quote.minOut)}` : loading ? <span className="spinner" /> : '—'}</span>
+                <span>{quote ? withFx(quote.minOut, usd) : loading ? <span className="spinner" /> : '—'}</span>
               </div>
               <div className="row-s">
                 <span>Expected</span>

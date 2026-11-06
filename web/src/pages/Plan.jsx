@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { isAddress, parseUnits } from 'viem'
-import { allowanceOf, call, config, inr, usd } from '../chain.js'
+import { allowanceOf, call, config, usd } from '../chain.js'
+import { fxOf, withFx } from '../currency.js'
 import { usePlan } from '../data.js'
 import { byAddress, family, nameOf } from '../family.js'
 import { useApp } from '../main.jsx'
@@ -132,7 +133,7 @@ export default function Plan({ id }) {
                   <span className="unit">USDC</span>
                 </div>
                 <div className="muted small">
-                  {inr(plan.closed ? 0n : plan.value)} · paid in {usd(plan.paidIn)}
+                  {fxOf(plan.closed ? 0n : plan.value) && `${fxOf(plan.closed ? 0n : plan.value)} · `}paid in {usd(plan.paidIn)} USDC
                   {interest > 0n && <span className="ok"> · interest +{usd(interest, 4)}</span>}
                 </div>
                 <div className="row" style={{ marginTop: 12 }}>
@@ -147,7 +148,7 @@ export default function Plan({ id }) {
             <hr className="divider" />
             <dl className="kv">
               <dt>Every month</dt>
-              <dd>{usd(plan.instalment)} USDC · {inr(plan.instalment)}</dd>
+              <dd>{withFx(plan.instalment, usd)}</dd>
               <dt>Next instalment</dt>
               <dd>{plan.closed || mature ? '—' : !plan.mandateOn ? 'Paused by the parent' : Number(plan.nextDue) <= now ? 'Due now; the watcher collects it shortly' : `${rel(plan.nextDue, now)} · ${dateOf(plan.nextDue)}`}</dd>
               <dt>Matures</dt>

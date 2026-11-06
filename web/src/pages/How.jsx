@@ -123,7 +123,7 @@ export default function How() {
         <div className="stack-sm">
           <Callout tone="warn">This is a test network with test money. The contracts have tests but no audit.</Callout>
           <Callout tone="info">Zoza Family is not a bank deposit, a recurring deposit or insurance, and it is not legal advice. A will on chain does not replace a legal will, and inheritance law still applies.</Callout>
-          <Callout tone="info">Plans hold US dollars (USDC). Rupee amounts on this site use a fixed rate for illustration. Interest from Compound is variable, and lending carries smart-contract risk.</Callout>
+          <Callout tone="info">Plans hold US dollars (USDC). Amounts in your own currency are estimates at today's exchange rate, which our server fetches so your browser never contacts a rate provider. Interest from Compound is variable, and lending carries smart-contract risk.</Callout>
           <Callout tone="info">The will covers what is in the wallet when a share is first paid. Anything you spend before then is yours to spend.</Callout>
         </div>
       </section>

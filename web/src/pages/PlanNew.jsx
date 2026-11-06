@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { parseUnits } from 'viem'
-import { allowanceOf, call, config, inr, INR_PER_USD, savings, usd } from '../chain.js'
+import { allowanceOf, call, config, savings, usd } from '../chain.js'
+import { currencyName, fxOf, withFx } from '../currency.js'
 import { hasPass, tokenFor } from '../auth.js'
 import { usePerson } from '../data.js'
 import { demoTime, family, loadMembers, setDemoTime } from '../family.js'
@@ -205,7 +206,7 @@ export default function PlanNew() {
               <span>USDC</span>
             </div>
             <span className="field-hint">
-              About {inr(instalment)} a month at ₹{INR_PER_USD} per dollar, for illustration. Plans hold US dollars (USDC), so the rupee value moves with the exchange rate.
+              Plans hold US dollars (USDC).{fxOf(instalment) && ` That is ${fxOf(instalment)} a month in ${currencyName()} at today's rate, and that value moves with the exchange rate.`}
             </span>
           </label>
           <div>
@@ -239,7 +240,7 @@ export default function PlanNew() {
             <div className="row-s">
               <span>You put in, in total</span>
               <span>
-                {usd(total)} USDC · {inr(total)}
+                {withFx(total, usd)}
               </span>
             </div>
           </div>
@@ -318,7 +319,7 @@ export default function PlanNew() {
             </div>
           </div>
           <div className="summary">
-            <div className="row-s"><span>Every month</span><span>{usd(instalment)} USDC · {inr(instalment)}</span></div>
+            <div className="row-s"><span>Every month</span><span>{withFx(instalment, usd)}</span></div>
             <div className="row-s"><span>Instalments</span><span>{months}, one per {demo ? 'minute (demo)' : 'month'}</span></div>
             <div className="row-s"><span>Matures</span><span>right after instalment {months}, in about {months - 1} {demo ? 'minutes' : 'months'}</span></div>
             <div className="row-s"><span>Paid to</span><span>{child.name} · <span className="mono small">{child.address.slice(0, 6)}…{child.address.slice(-4)}</span></span></div>

@@ -567,3 +567,8 @@ a.plan-card:hover { text-decoration: none; border-color: var(--line-strong); box
 .linkish { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; font-size: 14px; color: var(--accent); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; text-align: left; }
 .linkish:hover { text-decoration: underline; text-underline-offset: 2px; }
 .promise .more svg, .promise a.more svg { width: 15px; height: 15px; vertical-align: -2px; }
+
+/* Currency choice in the test-network strip */
+.fx-pick { margin-left: 14px; white-space: nowrap; }
+.fx-pick select { display: inline-block; width: auto; height: auto; min-height: 0; vertical-align: baseline; font: inherit; font-size: 12px; padding: 1px 4px; border-radius: 6px; border: 1px solid var(--line, #ddd); background: transparent; color: inherit; max-width: 190px; }
+@media (max-width: 720px) { .fx-pick { display: block; margin: 4px 0 0; white-space: normal; } }

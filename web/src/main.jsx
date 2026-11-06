@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { NETWORKS, onStats, setNetwork, start as startAnon, stats as anonStats } from './anon.js'
 import { config as liveConfig, loadConfig, sendBatch } from './chain.js'
 import { hasPass } from './auth.js'
+import { CURRENCIES, currencyCode, currencyName, loadRates, setCurrency } from './currency.js'
 import { providerFor } from './wallets.js'
 import { choose, current, family, loadMembers, loadSelf, mode, signOut, startDemo, watchWallet } from './family.js'
 import { useInbox } from './data.js'
@@ -231,11 +232,17 @@ function App() {
   const me = (meId && family.find((p) => p.id === meId && p.signer)) || current()
   const sender = useSender()
   const [, bump] = useState(0)
+  useEffect(() => {
+    const on = () => bump((x) => x + 1)
+    window.addEventListener('zf-fx', on)
+    return () => window.removeEventListener('zf-fx', on)
+  }, [])
 
   useEffect(() => {
     startAnon()
     // Draw as soon as the config is in; the family list follows over the mixnet.
     loadConfig().then(setCfg, (e) => setErr(e.message))
+    loadRates()
   }, [])
   // Someone may have accepted an invite since: refresh the family on each page.
   useEffect(() => {
@@ -271,6 +278,14 @@ function App() {
     <Ctx.Provider value={{ me, setMe, config: cfg, send: sender.run, rerender: () => bump((x) => x + 1) }}>
       <div className="strip">
         <b>Test network.</b> Ethereum Sepolia with test money only.{mode() === 'demo' ? ' The demo family\'s wallet keys are made and kept in this browser.' : ''}
+        <label className="fx-pick">
+          Amounts are USDC (US dollars). Also show in{' '}
+          <select value={currencyCode()} onChange={(e) => setCurrency(e.target.value)} aria-label="Also show amounts in">
+            {CURRENCIES.map((c) => (
+              <option key={c} value={c}>{c === 'USD' ? 'USD only' : `${c} · ${currencyName(c)}`}</option>
+            ))}
+          </select>
+        </label>
       </div>
       <header className="top">
         <div className="top-in">

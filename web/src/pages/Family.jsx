@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, call, inr, sendBatch, usd } from '../chain.js'
+import { api, call, sendBatch, usd } from '../chain.js'
+import { fxOf, withFx } from '../currency.js'
 import { usePerson } from '../data.js'
 import { inviteMessage, ROLES } from '../../../shared/invites.mjs'
 import { serverFetch } from '../anon.js'
@@ -35,11 +36,11 @@ export function PlanCard({ plan, now, viewer, balance }) {
       <div className="value">
         {plan.closed ? (
           <>
-            {usd(plan.paidIn)} <small>USDC saved · {inr(plan.paidIn)}</small>
+            {usd(plan.paidIn)} <small>USDC saved{fxOf(plan.paidIn) && ` · ${fxOf(plan.paidIn)}`}</small>
           </>
         ) : (
           <>
-            {usd(plan.value)} <small>USDC · {inr(plan.value)}</small>
+            {usd(plan.value)} <small>USDC{fxOf(plan.value) && ` · ${fxOf(plan.value)}`}</small>
           </>
         )}
       </div>
@@ -415,7 +416,7 @@ export default function Family() {
             {data ? usd(data.balance) : <Skel />}
             <span className="unit">USDC</span>
           </div>
-          <div className="tiny muted">{data ? `${inr(data.balance)} at an example rate of ₹88/$` : ' '}</div>
+          <div className="tiny muted">{data && fxOf(data.balance) ? `${fxOf(data.balance)} at today's rate` : ' '}</div>
           <button className="btn small" style={{ marginTop: 10 }} onClick={getMoney} disabled={faucet?.busy}>
             {faucet?.busy ? <span className="spinner" /> : <Icon name="coins" />} Get test money
           </button>

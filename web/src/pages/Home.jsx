@@ -1,3 +1,4 @@
+import { fxOf, withFx } from '../currency.js'
 import { mode, PEOPLE, startDemo } from '../family.js'
 import { useApp } from '../main.jsx'
 import { Face, Icon } from '../ui.jsx'
@@ -74,14 +75,14 @@ export default function Home() {
               <span className="badge neutral">Example, not a real account</span>
             </div>
             <div className="big">
-              ₹1,24,380<small>≈ 1,413.40 USDC</small>
+              1,413.40 USDC<small>{fxOf(1_413_400_000n)}</small>
             </div>
           </div>
           <div className="pb-lines">
-            <Line ico="piggy" cls="inst" what="Monthly instalment" sub="From Priya's wallet · 5 Mar" amt="+ ₹2,000" />
-            <Line ico="gift" cls="gift" what="Birthday gift from Dada" sub="Paid in ETH, swapped by Uniswap · 2 Mar" amt="+ ₹5,000" />
+            <Line ico="piggy" cls="inst" what="Monthly instalment" sub="From Priya's wallet · 5 Mar" amt="+ 25.00 USDC" />
+            <Line ico="gift" cls="gift" what="Birthday gift from Dada" sub="Paid in ETH, swapped by Uniswap · 2 Mar" amt="+ 60.00 USDC" />
             <Line ico="warn" cls="miss" what="Instalment missed" sub="Wallet was short · no penalty · 5 Feb" amt="Missed" missed />
-            <Line ico="trend" cls="top" what="Interest this year" sub="Compound III, variable" amt="+ ₹4,912" />
+            <Line ico="trend" cls="top" what="Interest this year" sub="Compound III, variable" amt="+ 55.80 USDC" />
           </div>
           <div className="pb-foot">
             <span>
