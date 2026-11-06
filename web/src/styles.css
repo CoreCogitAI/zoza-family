@@ -369,6 +369,7 @@ td.num, th.num { text-align: right; padding-right: 0; }
 .me-btn .role { font-weight: 500; color: var(--muted); font-size: 12.5px; }
 .pop { position: absolute; right: 0; top: calc(100% + 8px); width: 320px; max-width: calc(100vw - 32px); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 14px; box-shadow: var(--shadow-lg); padding: 8px; z-index: 40; }
 .pop-head { padding: 8px 10px 10px; font-size: 12px; color: var(--muted); }
+.pop-foot { border-top: 1px solid var(--line); margin-top: 6px; padding: 10px 6px 4px; display: grid; gap: 6px; }
 .pop button.person { display: flex; width: 100%; gap: 12px; align-items: center; text-align: left; border: 0; background: transparent; padding: 9px 10px; border-radius: 10px; cursor: pointer; font: inherit; color: var(--ink); }
 .pop button.person:hover { background: var(--surface-2); }
 .pop button.person[aria-current="true"] { background: var(--accent-soft); }

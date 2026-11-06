@@ -2,6 +2,7 @@
 // through Anon-RPC, and cached so the next visit paints at once.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { isCalibur } from '../../shared/calibur.mjs'
+import { authHeader } from './auth.js'
 import { api, client, config, savings, supplyApr, usdcOf, will } from './chain.js'
 
 export const STATES = ['None', 'Alive', 'Silent', 'Claim', 'Released']
@@ -123,17 +124,23 @@ export function usePlan(id, every = 12_000) {
   return { plan, error, refresh }
 }
 
-export function useInbox(address, every = 8000) {
+export function useInbox(person, every = 8000) {
   const [items, setItems] = useState([])
+  const address = person.address
   useEffect(() => {
     let live = true
-    const load = () => api(`/inbox/${address}`).then((x) => live && setItems(x)).catch(() => {})
+    const load = async () => {
+      const headers = await authHeader([person])
+      if (!headers['x-zoza-auth']) return live && setItems([])
+      const res = await fetch(`/api/inbox/${address}`, { headers }).catch(() => null)
+      if (res?.ok && live) setItems(await res.json())
+    }
     load()
     const t = setInterval(load, every)
     return () => {
       live = false
       clearInterval(t)
     }
-  }, [address, every])
+  }, [address, every, person])
   return items
 }

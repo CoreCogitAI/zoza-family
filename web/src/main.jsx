@@ -2,7 +2,7 @@ import { createContext, StrictMode, useCallback, useContext, useEffect, useRef, 
 import { createRoot } from 'react-dom/client'
 import { onStats, start as startAnon, stats as anonStats } from './anon.js'
 import { loadConfig, sendBatch } from './chain.js'
-import { choose, current, family, loadMembers } from './family.js'
+import { choose, connectWallet, current, family, forgetSelf, loadMembers, loadSelf } from './family.js'
 import { useInbox } from './data.js'
 import { Face, Icon, Modal, rel, SendSteps, useNow } from './ui.jsx'
 import Home from './pages/Home.jsx'
@@ -72,6 +72,23 @@ function useSender() {
 
 function PersonSwitcher({ me, setMe }) {
   const [open, setOpen] = useState(false)
+  const [err, setErr] = useState(null)
+  const connect = async () => {
+    setErr(null)
+    try {
+      await connectWallet()
+      await loadMembers()
+      setMe('self')
+      setOpen(false)
+    } catch (e) {
+      setErr(e.shortMessage ?? e.message)
+    }
+  }
+  const disconnect = () => {
+    forgetSelf()
+    setMe('priya')
+    setOpen(false)
+  }
   const ref = useRef(null)
   useEffect(() => {
     const off = (e) => ref.current && !ref.current.contains(e.target) && setOpen(false)
@@ -98,6 +115,20 @@ function PersonSwitcher({ me, setMe }) {
               </span>
             </button>
           ))}
+          <div className="pop-foot">
+            {!loadSelf() && window.ethereum && (
+              <button className="btn small block" onClick={connect}>
+                <Icon name="wallet" /> Connect my wallet
+              </button>
+            )}
+            {!loadSelf() && !window.ethereum && <p className="tiny muted">Install MetaMask or another browser wallet to use your own wallet here.</p>}
+            {loadSelf()?.kind === 'injected' && (
+              <button className="btn small ghost block" onClick={disconnect}>
+                Disconnect my wallet
+              </button>
+            )}
+            {err && <p className="tiny bad">{err}</p>}
+          </div>
         </div>
       )}
     </div>
@@ -105,7 +136,7 @@ function PersonSwitcher({ me, setMe }) {
 }
 
 function Inbox({ me }) {
-  const items = useInbox(me.address)
+  const items = useInbox(me)
   const now = useNow(10_000)
   const [open, setOpen] = useState(false)
   const [seen, setSeen] = useState(() => Number(localStorage.getItem(`zf.seen.${me.id}`) ?? 0))

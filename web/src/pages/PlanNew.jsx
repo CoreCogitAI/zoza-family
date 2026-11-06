@@ -172,7 +172,7 @@ export default function PlanNew() {
               <span>
                 <b>Earn interest with Compound</b>
                 <small>
-                  The plan lends its dollars on Compound III and gets them back with interest at maturity. Rate now: {data?.apr != null ? `${data.apr.toFixed(2)}% a year` : '…'}, and it changes every block. If Compound were hacked, savings could be lost.
+                  The plan lends its dollars on Compound III and gets them back with interest at maturity. Rate on this test network now: {data?.apr != null ? `${data.apr.toFixed(2)}% a year` : '…'}. That is not a real rate: real rates are usually far lower and change every block. If Compound were hacked, savings could be lost.
                 </small>
               </span>
             </button>

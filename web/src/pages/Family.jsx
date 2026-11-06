@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, call, inr, sendBatch, usd } from '../chain.js'
 import { usePerson } from '../data.js'
 import { inviteMessage, ROLES } from '../../../shared/invites.mjs'
+import { authHeader } from '../auth.js'
 import { byAddress, family, loadMembers, nameOf } from '../family.js'
 import { useApp } from '../main.jsx'
 import { Addr, Callout, Empty, Face, Icon, rel, Skel, Tip, useNow } from '../ui.jsx'
@@ -119,7 +120,8 @@ function InviteCard({ me }) {
 
   const load = useCallback(async () => {
     try {
-      const list = await fetch(`/api/invites?from=${me.address}`).then((r) => r.json())
+      const res = await fetch(`/api/invites?from=${me.address}`, { headers: await authHeader([me]) })
+      const list = res.ok ? await res.json() : []
       setSent(list.sort((a, b) => b.at - a.at))
       if (list.some((i) => i.acceptedBy && !byAddress(i.acceptedBy))) {
         await loadMembers()
@@ -241,7 +243,12 @@ export default function Family() {
             <h1>Hello, {me.name}</h1>
             <div className="row small muted" style={{ marginTop: 6, gap: 8 }}>
               <Addr address={me.address} />
-              {data?.delegated ? (
+              {me.injected ? (
+                <span className="badge neutral">
+                  Connected wallet
+                  <Tip>Your own wallet. It can save into plans, give gifts and receive what is left to you. It pays its own small gas fees. Writing a will needs the Zoza wallet.</Tip>
+                </span>
+              ) : data?.delegated ? (
                 <span className="badge guard">
                   <Icon name="shield" /> Calibur smart wallet
                 </span>
@@ -260,7 +267,7 @@ export default function Family() {
             {data ? usd(data.balance) : <Skel />}
             <span className="unit">USDC</span>
           </div>
-          <div className="tiny muted">{data ? `${inr(data.balance)} at ₹88/$, for illustration` : ' '}</div>
+          <div className="tiny muted">{data ? `${inr(data.balance)} at an example rate of ₹88/$` : ' '}</div>
           <button className="btn small" style={{ marginTop: 10 }} onClick={getMoney} disabled={faucet?.busy}>
             {faucet?.busy ? <span className="spinner" /> : <Icon name="coins" />} Get test money
           </button>
@@ -281,7 +288,7 @@ export default function Family() {
 
       <div className="split">
         <div className="stack">
-          {(me.id === 'priya' || mine.length > 0) && (
+          {(me.id === 'priya' || me.id === 'self' || mine.length > 0) && (
             <section>
               <div className="between" style={{ marginBottom: 12 }}>
                 <h2>Plans you save into</h2>
@@ -385,12 +392,12 @@ export default function Family() {
           </div>
           {data?.apr != null && (
             <div className="card tight">
-              <div className="stat-label">Compound supply rate now</div>
+              <div className="stat-label">Compound rate on the test network</div>
               <div className="stat-value">
                 {data.apr.toFixed(2)}
                 <span className="unit">% a year</span>
               </div>
-              <div className="tiny muted">Variable. On this test network it is unusually high because test borrowing fills the market.</div>
+              <div className="tiny muted">Not a real rate. Sepolia's test market is unusually high because test borrowing fills it. Real rates move with the market, are usually far lower, and are never promised.</div>
             </div>
           )}
         </aside>

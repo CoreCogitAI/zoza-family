@@ -60,7 +60,7 @@ export default function Home() {
                   <div className="tiny muted">Matures on her 18th birthday · Nominee: Ravi</div>
                 </div>
               </div>
-              <span className="badge ok">Earning 4.1%</span>
+              <span className="badge neutral">Example, not a real account</span>
             </div>
             <div className="big">
               ₹1,24,380<small>≈ 1,413.40 USDC</small>

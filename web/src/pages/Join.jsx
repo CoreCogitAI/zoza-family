@@ -3,7 +3,8 @@ import { createWalletClient, custom, getAddress } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { sepolia } from 'viem/chains'
 import { acceptMessage } from '../../../shared/invites.mjs'
-import { loadMembers, loadSelf, saveSelf } from '../family.js'
+import { tokenFor } from '../auth.js'
+import { family, loadMembers, loadSelf, saveSelf } from '../family.js'
 import { go, useApp } from '../main.jsx'
 import { Addr, Callout, Icon } from '../ui.jsx'
 
@@ -39,6 +40,7 @@ export default function Join({ code }) {
     const j = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error(j.error ?? `error ${res.status}`)
     saveSelf({ kind, address, key, name: inv.name, role: inv.role, inviter: { address: inv.from, name: inv.fromName } })
+    await tokenFor(family.find((p) => p.id === 'self'), true).catch(() => null)
     await loadMembers()
     setMe('self')
     go(inv.role === 'heir' ? '/will' : '/family')

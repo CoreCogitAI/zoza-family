@@ -8,7 +8,7 @@ Families in India save for a child's studies or wedding every month: recurring d
 - **A nominee.** The nominee guards the plan. They can point it to the child's new wallet, and must agree before the parent closes it early. They can never take the money.
 - **A will in the wallet.** Each heir gets a key on the parent's wallet that does nothing while the parent is around. After a silence period with no check-in, and a cancel window nobody uses, each heir can send only their own share to only their own wallet.
 - **Gifts from family.** A grandparent pays in ETH. The Uniswap API swaps it to USDC inside the same signed batch, and the plan receives at least the quoted minimum.
-- **Family joins with their own wallets.** The parent sends an invite link. The heir, child or nominee opens it and accepts by signing with MetaMask or any browser wallet, or makes a wallet there. Plans and wills only name addresses whose owners signed. An heir with MetaMask claims their share gaslessly; only the parent needs the Zoza wallet.
+- **Family joins with their own wallets.** The parent sends an invite link. The heir, child or nominee opens it and accepts by signing with MetaMask or any browser wallet, or makes a wallet there. Plans and wills only name addresses whose owners signed. An heir with MetaMask claims their share gaslessly. Anyone can also connect a wallet from the person menu to save into plans or give gifts, paying their own small gas. Writing a will needs the Zoza wallet.
 - **Private by default.** Every blockchain read the website makes goes through Anon-RPC. Writes are signed in the browser and sent by a relayer, so families never need ETH for gas.
 
 It runs on Ethereum Sepolia with test money. It is not a bank deposit, a recurring deposit, insurance or legal advice.
@@ -101,6 +101,7 @@ With `WATCHER=cre` the server stops writing and only turns chain changes into me
 
 - The relayer pays only for batches that touch Zoza Family's contracts, the plan token (approve to FamilySavings, transfer) or Uniswap's Universal Router. It never adds admin keys, and only adds keys with the FamilyWill hook. It only accepts EIP-7702 authorizations to Calibur, signed by the account itself. It simulates each batch before paying, with a 30% gas margin, and waits for the wallet to show Calibur code.
 - The relayer and the test faucet are limited per account and per hour overall (`RELAY_PER_HOUR`, `FAUCET_PER_HOUR`). A public server must set `NOTIFY_TOKEN`, or anyone could post messages into family inboxes.
+- Inboxes and family lists hold names and relationships the chain does not show. The server only returns them to a browser that signed a read pass for that address (valid 7 days). Invite codes are shown only to their sender.
 - `approve` replaces an allowance, so the website always approves the existing allowance plus the new amount. A top-up, a gift or a second plan never cancels another plan's mandate.
 - The watcher and the relayer cannot move money. The watcher's actions are permissionless, and each contract checks its own timing and amounts.
 - A will's shares are of the balance when the first share of each token is paid. The parent can spend freely before that.

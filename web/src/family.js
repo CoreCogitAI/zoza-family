@@ -4,6 +4,7 @@
 import { createWalletClient, custom, getAddress } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { sepolia } from 'viem/chains'
+import { authHeader, tokenFor } from './auth.js'
 
 const PEOPLE = [
   { id: 'priya', name: 'Priya', role: 'Parent', about: 'Saves for her children and keeps her will', tone: 'teal' },
@@ -58,7 +59,25 @@ function self() {
   const s = loadSelf()
   if (!s) return null
   const signer = s.kind === 'local' ? privateKeyToAccount(s.key) : injectedSigner(s.address)
-  return { id: 'self', name: s.name, role: `${s.inviter.name}'s ${s.role}`, about: s.kind === 'local' ? 'A wallet made in this browser' : 'Your own wallet', tone: toneOf(s.address), address: getAddress(s.address), signer, injected: s.kind !== 'local' }
+  const role = s.inviter ? `${s.inviter.name}'s ${s.role}` : 'Your wallet'
+  return { id: 'self', name: s.name, role, about: s.kind === 'local' ? 'A wallet made in this browser' : 'Your own wallet', tone: toneOf(s.address), address: getAddress(s.address), signer, injected: s.kind !== 'local' }
+}
+
+/// Connect a browser wallet (MetaMask and others) as "you", without an invite.
+export async function connectWallet() {
+  const wallet = createWalletClient({ chain: sepolia, transport: custom(window.ethereum) })
+  const [address] = await wallet.requestAddresses()
+  await wallet.switchChain({ id: sepolia.id }).catch(() => {})
+  saveSelf({ kind: 'injected', address: getAddress(address), name: 'You', role: 'family', inviter: null })
+  // One signature now, so the inbox and family list can be read for a week.
+  await tokenFor(self(), true).catch(() => null)
+}
+
+export function forgetSelf() {
+  try {
+    localStorage.removeItem(SELF)
+  } catch {}
+  family = build()
 }
 
 export function saveSelf(s) {
@@ -84,13 +103,15 @@ export function injectedSigner(address) {
 /// People this family invited who accepted, so plans and wills can name them.
 export async function loadMembers() {
   const s = loadSelf()
-  const from = [...PEOPLE.map((p) => privateKeyToAccount(keys[p.id]).address), ...(s ? [s.address] : [])]
+  const readers = build().filter((p) => p.signer)
   try {
-    const list = await fetch(`/api/invites?from=${from.join(',')}`).then((r) => r.json())
+    const headers = await authHeader(readers)
+    const res = await fetch(`/api/invites?from=${readers.map((p) => p.address).join(',')}`, { headers })
+    const list = res.ok ? await res.json() : []
     members = list
       .filter((i) => i.acceptedBy)
       .map((i) => ({ id: `m-${i.acceptedBy.toLowerCase()}`, name: i.name, role: `${i.fromName}'s ${i.role === 'family' ? 'family' : i.role}`, about: 'Joined with their own wallet', tone: toneOf(i.acceptedBy), address: i.acceptedBy, signer: null }))
-    if (s) members.push({ id: `m-${s.inviter.address.toLowerCase()}`, name: s.inviter.name, role: 'Invited you', about: 'Invited you to their family', tone: toneOf(s.inviter.address), address: s.inviter.address, signer: null })
+    if (s?.inviter) members.push({ id: `m-${s.inviter.address.toLowerCase()}`, name: s.inviter.name, role: 'Invited you', about: 'Invited you to their family', tone: toneOf(s.inviter.address), address: s.inviter.address, signer: null })
   } catch {}
   family = build()
   return family
