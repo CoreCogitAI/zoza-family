@@ -65,7 +65,12 @@ export async function sendBatch({ signer, account, calls, onStep = () => {} }) {
     let hash
     for (const c of calls) {
       onStep('sign')
-      hash = await signer.wallet.sendTransaction({ to: c.to, data: c.data, value: BigInt(c.value ?? 0) })
+      // Suggest the network's real fee. Left alone, a wallet often offers many
+      // times what Sepolia needs, and a test wallet runs out of ETH.
+      const block = await client.getBlock()
+      const tip = 10_000_000n // 0.01 gwei
+      const fees = block.baseFeePerGas != null ? { maxPriorityFeePerGas: tip, maxFeePerGas: block.baseFeePerGas * 2n + tip } : {}
+      hash = await signer.wallet.sendTransaction({ to: c.to, data: c.data, value: BigInt(c.value ?? 0), ...fees })
       onStep('send')
       await client.waitForTransactionReceipt({ hash, timeout: 180_000 })
     }
