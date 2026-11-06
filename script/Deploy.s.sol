@@ -11,6 +11,7 @@ import {IComet} from "../src/interfaces/IComet.sol";
 ///   COMET      the Compound III market whose base token plans save in
 ///   FORWARDER  Chainlink's (Mock)KeystoneForwarder allowed to send reports
 ///   WILL       optional: keep this FamilyWill (and its wills), with WILL_BLOCK
+///   SAVINGS    optional: keep this FamilySavings (and its plans)
 contract Deploy is Script {
     // forge sends CREATE2 deployments through this factory.
     address constant FACTORY = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
@@ -26,7 +27,8 @@ contract Deploy is Script {
 
         vm.startBroadcast();
         if (address(will) == address(0)) will = _deployWill();
-        FamilySavings savings = new FamilySavings(comet);
+        FamilySavings savings = FamilySavings(vm.envOr("SAVINGS", address(0)));
+        if (address(savings) == address(0)) savings = new FamilySavings(comet);
         FamilyWatcher watcher = new FamilyWatcher(forwarder, will, savings);
         vm.stopBroadcast();
 

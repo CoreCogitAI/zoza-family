@@ -196,6 +196,39 @@
   },
   {
    "type": "function",
+   "name": "makeWillWithAllowance",
+   "inputs": [
+    {
+     "name": "heirs",
+     "type": "address[]",
+     "internalType": "address[]"
+    },
+    {
+     "name": "shares",
+     "type": "uint16[]",
+     "internalType": "uint16[]"
+    },
+    {
+     "name": "tokens",
+     "type": "address[]",
+     "internalType": "address[]"
+    },
+    {
+     "name": "silence",
+     "type": "uint32",
+     "internalType": "uint32"
+    },
+    {
+     "name": "window",
+     "type": "uint32",
+     "internalType": "uint32"
+    }
+   ],
+   "outputs": [],
+   "stateMutability": "nonpayable"
+  },
+  {
+   "type": "function",
    "name": "nextMoment",
    "inputs": [
     {
@@ -288,6 +321,29 @@
   },
   {
    "type": "function",
+   "name": "take",
+   "inputs": [
+    {
+     "name": "owner",
+     "type": "address",
+     "internalType": "address"
+    },
+    {
+     "name": "token",
+     "type": "address",
+     "internalType": "address"
+    },
+    {
+     "name": "amount",
+     "type": "uint256",
+     "internalType": "uint256"
+    }
+   ],
+   "outputs": [],
+   "stateMutability": "nonpayable"
+  },
+  {
+   "type": "function",
    "name": "willOf",
    "inputs": [
     {
@@ -341,6 +397,11 @@
        "name": "tokens",
        "type": "address[]",
        "internalType": "address[]"
+      },
+      {
+       "name": "pull",
+       "type": "bool",
+       "internalType": "bool"
       }
      ]
     }
@@ -561,6 +622,11 @@
   },
   {
    "type": "error",
+   "name": "NotAnAllowanceWill",
+   "inputs": []
+  },
+  {
+   "type": "error",
    "name": "NotAnHeirKey",
    "inputs": []
   },
@@ -599,6 +665,11 @@
   {
    "type": "error",
    "name": "TokenNotInWill",
+   "inputs": []
+  },
+  {
+   "type": "error",
+   "name": "TransferFailed",
    "inputs": []
   }
  ],

@@ -37,7 +37,7 @@ const SAVINGS = parseAbi([
 ])
 const WILL = parseAbi([
   "function stateOf(address owner) view returns (uint8)",
-  "function willOf(address owner) view returns ((uint64 version, uint64 lastSeen, uint64 claimOpenedAt, uint32 silence, uint32 window, address[] heirs, uint16[] shares, address[] tokens))",
+  "function willOf(address owner) view returns ((uint64 version, uint64 lastSeen, uint64 claimOpenedAt, uint32 silence, uint32 window, address[] heirs, uint16[] shares, address[] tokens, bool pull))",
 ])
 const SILENT = 2
 

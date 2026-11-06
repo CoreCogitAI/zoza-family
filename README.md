@@ -89,9 +89,9 @@ cre workflow simulate family-watcher --target staging-settings --broadcast
 
 | Contract | Address |
 |---|---|
-| FamilyWill (Calibur hook) | [0xFe3ceec6A5006660F9770D5cE99D1314556F3E28](https://sepolia.etherscan.io/address/0xFe3ceec6A5006660F9770D5cE99D1314556F3E28) |
+| FamilyWill (Calibur hook, or allowance for other wallets) | [0xd65f7aF469cE8352c23a91Ea0989819C9b1AA008](https://sepolia.etherscan.io/address/0xd65f7aF469cE8352c23a91Ea0989819C9b1AA008) |
 | FamilySavings | [0x399146CEA8Bd31776f013f10817a79284767d6f8](https://sepolia.etherscan.io/address/0x399146CEA8Bd31776f013f10817a79284767d6f8) |
-| FamilyWatcher (CRE receiver, MockKeystoneForwarder) | [0xC966157A4D051EE5A8Ed0d17e58004682BF37cf6](https://sepolia.etherscan.io/address/0xC966157A4D051EE5A8Ed0d17e58004682BF37cf6) |
+| FamilyWatcher (CRE receiver, MockKeystoneForwarder) | [0x3599f1f08e7cb09d1D40f70CB312a4B8546325dF](https://sepolia.etherscan.io/address/0x3599f1f08e7cb09d1D40f70CB312a4B8546325dF) |
 | Calibur v1.1.0 (Uniswap) | [0x000000005c84F8Fd50b21CAC312528A64437030e](https://sepolia.etherscan.io/address/0x000000005c84F8Fd50b21CAC312528A64437030e) |
 | Compound III USDC market | [0xAec1F48e02Cfb822Be958B68C7957156EB3F0b6e](https://sepolia.etherscan.io/address/0xAec1F48e02Cfb822Be958B68C7957156EB3F0b6e) |
 | USDC (Circle, test) | [0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238](https://sepolia.etherscan.io/address/0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238) |
