@@ -36,7 +36,7 @@ Parent's EOA ──EIP-7702──> Uniswap Calibur (same address, same money)
    ├─ approve(FamilySavings, instalment × months)     the mandate
    └─ FamilySavings.createPlan(child, nominee, ...)   the plan
 
-Watcher (server, or a Chainlink CRE workflow) ── every minute, anyone may call:
+Watcher (Chainlink CRE by default; the server can be an explicit local fallback) ── every minute, anyone may call:
    collect(id)       one instalment per period, or "missed" if the wallet is short
    openClaim(owner)  only after the silence period
    release(id)       only at maturity, only to the child
@@ -77,7 +77,7 @@ cp .env.example .env    # CRE_ETH_PRIVATE_KEY: a funded Sepolia test key; NOTIFY
 cre workflow simulate family-watcher --target staging-settings --broadcast
 ```
 
-With `WATCHER=cre` the server stops writing and only turns chain changes into messages.
+`WATCHER=cre` is the default. The server reads chain state and turns chain changes into messages, while CRE submits the report; the local `WATCHER=server` mode is retained as a fallback and uses `KEEPER_KEY` to submit actions directly.
 
 **Compound III.** Earning plans supply USDC to the Sepolia USDC market ([src/FamilySavings.sol#L290](src/FamilySavings.sol#L290)) and withdraw straight to the child at maturity ([#L306](src/FamilySavings.sol#L306)). Each plan owns shares of the contract's Compound balance, with a virtual offset against donation attacks ([#L314](src/FamilySavings.sol#L314)).
 
@@ -109,6 +109,7 @@ With `WATCHER=cre` the server stops writing and only turns chain changes into me
 - A will's shares are of the balance when the first share of each token is paid. The parent can spend freely before that.
 - The Compact (Uniswap) was considered for locking savings, but its owner can always force-withdraw after the reset period (at most 30 days), which does not fit an 18-year promise. Plans therefore lock in FamilySavings itself.
 - Not audited. Test money only.
+- Automation defaults to `WATCHER=cre`. Use `WATCHER=server` only as a local fallback; it uses `KEEPER_KEY`, while the default CRE mode submits reports through `FamilyWatcher` and the server only observes and notifies.
 
 ## Layout
 
@@ -137,3 +138,5 @@ The team decided what to build and checked that it worked:
 ## License
 
 MIT
+
+For small startups, the same wallet stack also has a separate `Startup` page for USDC payment limits, configured approvers, maker-checker proposals, and CSV audit export. Family savings and wills remain unchanged; startup controls are not on-chain execution hooks or custody software.

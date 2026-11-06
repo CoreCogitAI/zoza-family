@@ -5,7 +5,9 @@ import { formatUnits, getAddress } from 'viem'
 import { abi, client, deployment, fees, keeper } from './config.mjs'
 import { db, notify, save } from './store.mjs'
 
-const MODE = process.env.WATCHER ?? 'server'
+const requestedMode = (process.env.WATCHER ?? 'cre').toLowerCase()
+const MODE = ['server', 'cre', 'off'].includes(requestedMode) ? requestedMode : 'cre'
+if (requestedMode !== MODE) console.warn(`Unknown WATCHER=${process.env.WATCHER}; using CRE mode`)
 const EVERY_MS = Number(process.env.WATCH_EVERY_MS ?? 10_000)
 const CHUNK = BigInt(process.env.LOG_CHUNK ?? 5_000)
 const WILL_MADE = abi.will.find((x) => x.name === 'WillMade' && x.type === 'event')

@@ -35,6 +35,8 @@ const PATHS = {
   cap: 'M2 9l10-5 10 5-10 5L2 9zM6 11v5c0 1 3 3 6 3s6-2 6-3v-5M22 9v6',
   rings: 'M9 15a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM15 19a5 5 0 1 0 0-10 5 5 0 0 0 0 10z',
   refresh: 'M20 11a8 8 0 0 0-14.9-3M4 4v4h4M4 13a8 8 0 0 0 14.9 3M20 20v-4h-4',
+  save: 'M5 3h12l4 4v14H3V5a2 2 0 0 1 2-2zM7 3v6h8V3M7 17h10',
+  download: 'M12 3v12M7 10l5 5 5-5M4 21h16',
 }
 
 export function Icon({ name, className, title }) {

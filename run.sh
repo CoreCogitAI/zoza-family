@@ -7,7 +7,8 @@
 #   ./run.sh fund 0.001 buy test USDC for the faucet with Sepolia ETH, via the Uniswap API
 #   ./run.sh deploy     deploy the contracts (writes deployments/11155111.json)
 # Keys come from .env (git ignores it): DEPLOYER_KEY, RELAYER_KEY, KEEPER_KEY,
-# UNISWAP_API_KEY, and NOTIFY_TOKEN on a public server. Use fresh wallets that
+# UNISWAP_API_KEY, NOTIFY_TOKEN, and WATCHER=cre for the default automation path.
+# Use WATCHER=server only as a local fallback. Use fresh wallets that
 # only ever hold test money.
 set -euo pipefail
 cd "$(dirname "$0")"

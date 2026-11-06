@@ -8,8 +8,9 @@ import { CALIBUR } from '../shared/calibur.mjs'
 import { CHAIN_ID, deployment, EXPLORER, keeper, PORT, PUBLIC_RPC_URL, relayer, root, treasury, UNIVERSAL_ROUTER } from './config.mjs'
 import { faucet, FaucetError } from './faucet.mjs'
 import { relay, RelayError, short } from './relay.mjs'
-import { db, notify } from './store.mjs'
+import { db, notify, save } from './store.mjs'
 import { giftQuote, QuoteError } from './uniswap.mjs'
+import { StartupError, auditCsv, createProposal, decideProposal, getPolicy, listProposals, savePolicy } from './startup.mjs'
 import * as invites from './invites.mjs'
 import { readers } from './auth.mjs'
 import { rememberOwner, start, status } from './watcher.mjs'
@@ -95,6 +96,35 @@ async function api(req, res, url) {
     notify(to, { kind: b.kind ?? 'watcher', title: String(b.title).slice(0, 120), body: String(b.body ?? '').slice(0, 500), via: 'cre' })
     return send(res, 200, { ok: true, to: to.length })
   }
+
+  const startupOwner = url.searchParams.get('owner')
+  if (startupOwner && isAddress(startupOwner)) {
+    const may = await readers(req)
+    if (!may.has(startupOwner.toLowerCase())) return send(res, 401, { error: 'sign in to manage this startup wallet' })
+    const ownerKey = getAddress(startupOwner)
+    if (req.method === 'GET' && path === '/api/startup/policy') return send(res, 200, { policy: getPolicy(db, ownerKey) })
+    if (req.method === 'PUT' && path === '/api/startup/policy') return send(res, 200, { policy: savePolicy(db, save, ownerKey, await readJson(req)) })
+    if (req.method === 'GET' && path === '/api/startup/proposals') return send(res, 200, { proposals: listProposals(db, ownerKey) })
+    if (req.method === 'GET' && path === '/api/startup/audit.csv') {
+      res.writeHead(200, { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': `attachment; filename="startup-audit-${ownerKey.slice(2, 8)}.csv"`, 'cache-control': 'no-store' })
+      res.end(auditCsv(db, ownerKey))
+      return
+    }
+  }
+  if (req.method === 'POST' && path === '/api/startup/proposals') {
+    const b = await readJson(req)
+    const may = await readers(req)
+    if (!b.owner || !isAddress(b.owner) || !may.has(b.owner.toLowerCase())) return send(res, 401, { error: 'sign in to create a proposal' })
+    if (!b.actor || !isAddress(b.actor) || !may.has(b.actor.toLowerCase())) return send(res, 401, { error: 'authenticated actor required' })
+    return send(res, 200, { proposal: createProposal(db, save, b.owner, b, b.actor) })
+  }
+  if (req.method === 'POST' && path === '/api/startup/proposals/decide') {
+    const b = await readJson(req)
+    const may = await readers(req)
+    if (!b.owner || !isAddress(b.owner) || !may.has(b.owner.toLowerCase())) return send(res, 401, { error: 'sign in to review a proposal' })
+    if (!b.actor || !isAddress(b.actor) || !may.has(b.actor.toLowerCase())) return send(res, 401, { error: 'authenticated actor required' })
+    return send(res, 200, { proposal: decideProposal(db, save, b.owner, b.id, b.actor, b.decision) })
+  }
   return send(res, 404, { error: 'not found' })
 }
 
@@ -117,7 +147,7 @@ createServer(async (req, res) => {
   try {
     await api(req, res, url)
   } catch (e) {
-    const status = e instanceof RelayError ? e.status : e instanceof FaucetError || e instanceof QuoteError || e instanceof invites.InviteError ? 400 : 500
+    const status = e instanceof RelayError ? e.status : e instanceof StartupError || e instanceof FaucetError || e instanceof QuoteError || e instanceof invites.InviteError ? e.status ?? 400 : 500
     if (status === 500) console.error(e)
     send(res, status, { error: status === 500 ? short(e) : e.message })
   }
