@@ -11,6 +11,7 @@ import { relay, RelayError, short } from './relay.mjs'
 import { db, notify } from './store.mjs'
 import { giftQuote, QuoteError } from './uniswap.mjs'
 import * as invites from './invites.mjs'
+import { readers } from './auth.mjs'
 import { rememberOwner, start, status } from './watcher.mjs'
 
 const WEB = process.env.WEB_DIST ?? join(root, 'web', 'dist')
@@ -70,7 +71,9 @@ async function api(req, res, url) {
   if (req.method === 'GET' && path === '/api/invites/code') return send(res, 200, { code: invites.newCode() })
   if (req.method === 'POST' && path === '/api/invites') return send(res, 200, await invites.create(await readJson(req)))
   if (req.method === 'GET' && path === '/api/invites') {
-    const from = (url.searchParams.get('from') ?? '').split(',').filter((a) => isAddress(a))
+    const may = await readers(req)
+    const from = (url.searchParams.get('from') ?? '').split(',').filter((a) => isAddress(a) && may.has(a.toLowerCase()))
+    if (!from.length) return send(res, 401, { error: 'sign in to read this family list' })
     return send(res, 200, invites.sentBy(from))
   }
   const inv = path.match(/^\/api\/invites\/([A-Za-z0-9_-]{12})(\/accept)?$/)
@@ -78,7 +81,10 @@ async function api(req, res, url) {
   if (inv && req.method === 'POST' && inv[2]) return send(res, 200, await invites.accept(inv[1], await readJson(req)))
 
   const inbox = path.match(/^\/api\/inbox\/(0x[0-9a-fA-F]{40})$/)
-  if (req.method === 'GET' && inbox) return send(res, 200, db.inbox[inbox[1].toLowerCase()] ?? [])
+  if (req.method === 'GET' && inbox) {
+    if (!(await readers(req)).has(inbox[1].toLowerCase())) return send(res, 401, { error: 'sign in to read these messages' })
+    return send(res, 200, db.inbox[inbox[1].toLowerCase()] ?? [])
+  }
 
   // Messages from the Chainlink CRE workflow (or any trusted job).
   if (req.method === 'POST' && path === '/api/notify') {

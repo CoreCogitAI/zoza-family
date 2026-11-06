@@ -5,6 +5,7 @@ import { createPublicClient, encodeFunctionData, erc20Abi, fallback, formatUnits
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import abi from '../shared/abi.json' with { type: 'json' }
 import { addGuardedKey, CALIBUR, isCalibur, signBatch, toWire } from '../shared/calibur.mjs'
+import { readMessage } from '../shared/invites.mjs'
 
 const API = process.env.API_URL ?? 'http://127.0.0.1:8790'
 const SILENCE = Number(process.env.SILENCE_S ?? 45)
@@ -50,6 +51,14 @@ async function send(signer, account, calls, retry = true) {
     return send(signer, account, calls, false)
   }
   return out
+}
+
+/// The signed header that lets `signer` read its own inbox.
+async function readAuth(signer) {
+  const address = signer.address.toLowerCase()
+  const expiry = Math.floor(Date.now() / 1000) + 3600
+  const signature = await signer.signMessage({ message: readMessage(address, expiry) })
+  return { 'x-zoza-auth': Buffer.from(JSON.stringify([{ address, expiry, signature }])).toString('base64url') }
 }
 
 async function until(what, fn, seconds) {
@@ -135,7 +144,7 @@ if (q.status === 200) {
 // 6. Priya goes quiet; the watcher opens a claim; she checks in and cancels it.
 check(await until('claim to open', async () => Number(await read(cfg.will, abi.will, 'stateOf', [priya.address])) === 3, SILENCE + 60), 'watcher opened a claim after silence')
 const told = await until('message to Arjun', async () => {
-  const box = await fetch(`${API}/api/inbox/${arjun.address}`).then((r) => r.json())
+  const box = await fetch(`${API}/api/inbox/${arjun.address}`, { headers: await readAuth(arjun) }).then((r) => r.json())
   return Array.isArray(box) && box.some((m) => m.title === 'A claim has opened')
 }, 20)
 check(told, 'Arjun was told')
