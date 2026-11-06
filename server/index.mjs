@@ -148,7 +148,9 @@ function serveStatic(res, pathname) {
     return
   }
   const immutable = file.includes('/assets/')
-  res.writeHead(200, { 'content-type': TYPES[extname(file)] ?? 'application/octet-stream', 'cache-control': immutable ? 'public, max-age=31536000, immutable' : 'no-cache' })
+  // no-transform: Cloudflare must not add its analytics beacon, which would
+  // show visitors' IP addresses to a third party.
+  res.writeHead(200, { 'content-type': TYPES[extname(file)] ?? 'application/octet-stream', 'cache-control': immutable ? 'public, max-age=31536000, immutable, no-transform' : 'no-cache, no-transform' })
   createReadStream(file).pipe(res)
 }
 
