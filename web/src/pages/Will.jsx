@@ -3,13 +3,17 @@ import { encodeFunctionData, erc20Abi, maxUint256, zeroAddress } from 'viem'
 import { addGuardedKey, keyHashOf } from '../../../shared/calibur.mjs'
 import { abi, call, config, inr, usd } from '../chain.js'
 import { usePerson } from '../data.js'
-import { byAddress, demoTime, family, nameOf } from '../family.js'
+import { byAddress, demoTime, family, nameOf, setDemoTime } from '../family.js'
 import { go, useApp } from '../main.jsx'
 import { NeedFamily } from './PlanNew.jsx'
 import { Callout, dateOf, Empty, Face, Icon, rel, Tip, useNow } from '../ui.jsx'
 
 const PERIODS = {
-  demo: { silence: [[90, '90 seconds'], [180, '3 minutes']], window: [[45, '45 seconds'], [90, '90 seconds']] },
+  // Short stand-ins for the real periods, so a claim can open on stage.
+  demo: {
+    silence: [[90, '90 seconds (stands in for 6 months)'], [180, '3 minutes (stands in for 1 year)']],
+    window: [[45, '45 seconds (stands in for 30 days)'], [90, '90 seconds (stands in for 60 days)']],
+  },
   real: {
     silence: [[180 * 86400, '6 months'], [365 * 86400, '1 year'], [90 * 86400, '3 months']],
     window: [[30 * 86400, '30 days'], [60 * 86400, '60 days'], [90 * 86400, '90 days']],
@@ -56,7 +60,7 @@ function Timeline({ state }) {
 }
 
 function Editor({ me, data, send, refresh }) {
-  const demo = demoTime()
+  const [demo, setDemo] = useState(demoTime())
   const P = PERIODS[demo ? 'demo' : 'real']
   const existing = data?.will
   const candidates = family.filter((p) => p.id !== me.id)
@@ -169,7 +173,21 @@ function Editor({ me, data, send, refresh }) {
             </select>
           </label>
         </div>
-        {demo && <span className="field-hint">Demo timing is on, so seconds stand in for days. Turn it off in a new savings plan to use real periods.</span>}
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={demo}
+            onChange={(e) => {
+              const on = e.target.checked
+              setDemo(on)
+              setDemoTime(on)
+              const Q = PERIODS[on ? 'demo' : 'real']
+              setSilence(Q.silence[0][0])
+              setWindowS(Q.window[0][0])
+            }}
+          />{' '}
+          Demo timing: watch a claim open in a few minutes. Turn off for a real will, measured in months.
+        </label>
         {pull ? (
           <span className="field-hint">Covers the USDC in this wallet. ETH can't be left through a connected wallet's will.</span>
         ) : (
