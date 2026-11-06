@@ -8,12 +8,17 @@ import { byAddress, family, loadMembers, nameOf } from '../family.js'
 import { useApp } from '../main.jsx'
 import { Addr, Callout, Empty, Face, Icon, rel, Skel, Tip, useNow } from '../ui.jsx'
 
-export function PlanCard({ plan, now, viewer }) {
+export function PlanCard({ plan, now, viewer, balance }) {
   const child = byAddress(plan.child)
   const total = Number(plan.maturity) - Number(plan.createdAt)
   const pct = plan.closed ? 100 : Math.min(100, (100 * (now - Number(plan.createdAt))) / Math.max(total, 1))
   const interest = plan.closed || plan.value < plan.paidIn + 100n ? 0n : plan.value - plan.paidIn
-  const role = viewer.toLowerCase() === plan.parent.toLowerCase() ? 'You pay in' : viewer.toLowerCase() === plan.child.toLowerCase() ? 'For you' : viewer.toLowerCase() === plan.nominee.toLowerCase() ? 'You are nominee' : null
+  const isParent = viewer.toLowerCase() === plan.parent.toLowerCase()
+  const role = isParent ? (plan.closed ? 'You paid in' : 'You pay in') : viewer.toLowerCase() === plan.child.toLowerCase() ? 'For you' : viewer.toLowerCase() === plan.nominee.toLowerCase() ? 'You are nominee' : null
+  const over = !plan.closed && now >= Number(plan.maturity)
+  const empty = plan.paidIn === 0n
+  const missedLast = !plan.closed && plan.book?.length > 0 && plan.book[plan.book.length - 1].kind === 3
+  const missed = `${plan.missedCount} instalment${plan.missedCount === 1 ? '' : 's'} missed`
   return (
     <a className="plan-card" href={`#/plan/${plan.id}`}>
       <div className="between">
@@ -24,23 +29,42 @@ export function PlanCard({ plan, now, viewer }) {
             <small>For {nameOf(plan.child)} · nominee {nameOf(plan.nominee)}</small>
           </div>
         </div>
-        {plan.closed ? <span className="badge ok">Matured</span> : plan.earn ? <span className="badge accent">Earning</span> : <span className="badge neutral">Safe</span>}
+        {plan.closed ? <span className={`badge ${empty ? 'neutral' : 'ok'}`}>{empty ? 'Closed' : 'Paid out'}</span> : over ? <span className="badge ok">Matured</span> : plan.earn ? <span className="badge accent">Earning</span> : <span className="badge neutral">Safe</span>}
       </div>
       <div className="value">
-        {usd(plan.closed ? 0n : plan.value)} <small>USDC · {inr(plan.closed ? 0n : plan.value)}</small>
+        {plan.closed ? (
+          <>
+            {usd(plan.paidIn)} <small>USDC saved · {inr(plan.paidIn)}</small>
+          </>
+        ) : (
+          <>
+            {usd(plan.value)} <small>USDC · {inr(plan.value)}</small>
+          </>
+        )}
       </div>
       <div className="tiny muted">
-        {plan.closed ? 'Paid out to the child' : `Paid in ${usd(plan.paidIn)}${interest > 0n ? ` · interest +${usd(interest, 4)}` : ''}`}
+        {plan.closed
+          ? empty
+            ? `Nothing was saved: ${missed}`
+            : `Paid out when it closed${plan.missedCount ? ` · ${missed}` : ''}`
+          : `Paid in ${usd(plan.paidIn)}${interest > 0n ? ` · interest +${usd(interest, 4)}` : ''}${plan.missedCount ? ` · ${missed}` : ''}`}
       </div>
       <div className="progress" style={{ marginTop: 14 }} aria-label={`${Math.round(pct)}% of the way to maturity`}>
         <span style={{ width: `${pct}%` }} />
       </div>
       <div className="meta">
-        <span>{plan.closed ? 'Closed' : `Matures ${rel(plan.maturity, now)}`}</span>
+        <span>{plan.closed ? 'Closed' : over ? `Matured · pays ${nameOf(plan.child)} shortly` : `Matures ${rel(plan.maturity, now)}`}</span>
         <span>
-          {plan.closed ? '' : plan.mandateOn ? `Next ${usd(plan.instalment)} ${Number(plan.nextDue) <= now ? 'due now' : rel(plan.nextDue, now)}` : 'Mandate paused'}
+          {plan.closed || over ? '' : plan.mandateOn ? `Next ${usd(plan.instalment)} ${Number(plan.nextDue) <= now ? 'due now' : rel(plan.nextDue, now)}` : 'Mandate paused'}
         </span>
       </div>
+      {missedLast && !over && (
+        <div className="tiny" style={{ marginTop: 10, color: 'var(--warn)', fontWeight: 600 }}>
+          {isParent && balance != null && balance < plan.instalment
+            ? `Your wallet has ${usd(balance)}, less than the ${usd(plan.instalment)} instalment`
+            : 'The last instalment was missed: the wallet was short'}
+        </div>
+      )}
       {role && <div className="tiny" style={{ marginTop: 10, color: 'var(--accent)', fontWeight: 600 }}>{role}</div>}
     </a>
   )
@@ -228,7 +252,8 @@ export default function Family() {
     }
   }
 
-  const plans = data?.plans ?? []
+  // Live plans first, newest first; finished ones after.
+  const plans = [...(data?.plans ?? [])].sort((a, b) => Number(a.closed) - Number(b.closed) || b.id - a.id)
   const mine = plans.filter((p) => p.parent.toLowerCase() === me.address.toLowerCase())
   const forMe = plans.filter((p) => p.child.toLowerCase() === me.address.toLowerCase())
   const guard = plans.filter((p) => p.nominee.toLowerCase() === me.address.toLowerCase())
@@ -299,7 +324,7 @@ export default function Family() {
               </div>
               <div className="tiles">
                 {mine.map((p) => (
-                  <PlanCard key={p.id} plan={p} now={now} viewer={me.address} />
+                  <PlanCard key={p.id} plan={p} now={now} viewer={me.address} balance={data?.balance} />
                 ))}
                 {!data && <div className="plan-card"><Skel w={160} /><div style={{ marginTop: 16 }}><Skel w={120} /></div></div>}
                 {data && mine.length === 0 && (

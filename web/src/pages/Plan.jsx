@@ -90,8 +90,21 @@ export default function Plan({ id }) {
 
       {plan.closed && (
         <div style={{ marginBottom: 20 }}>
-          <Callout tone="ok">
-            <b>This plan has paid out.</b> Everything it held went to {nameOf(plan.child)}'s wallet.
+          {plan.paidIn === 0n ? (
+            <Callout tone="warn">
+              <b>This plan closed with nothing in it.</b> All {plan.missedCount} instalments were missed because the wallet held less than {usd(plan.instalment)} USDC each time.
+            </Callout>
+          ) : (
+            <Callout tone="ok">
+              <b>This plan has paid out.</b> {usd(plan.paidIn)} USDC was saved, and everything it held, interest included, was paid out when it closed.
+            </Callout>
+          )}
+        </div>
+      )}
+      {!plan.closed && !mature && isParent && plan.book.length > 0 && plan.book[plan.book.length - 1].kind === 3 && (
+        <div style={{ marginBottom: 20 }}>
+          <Callout tone="warn">
+            <b>The last instalment was missed.</b> Your wallet held less than {usd(plan.instalment)} USDC. Add money on your family page, or lower the monthly amount below. Missed months carry no penalty.
           </Callout>
         </div>
       )}
